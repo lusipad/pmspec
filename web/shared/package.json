@@ -1,0 +1,11 @@
+{
+  "name": "@pmspec/shared",
+  "version": "1.0.0",
+  "description": "Shared types between frontend and backend",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}

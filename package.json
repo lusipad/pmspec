@@ -1,0 +1,68 @@
+{
+  "name": "@pmspec/core",
+  "version": "1.0.0",
+  "description": "简化的项目管理工具 - 只需维护一个功能表",
+  "keywords": [
+    "pmspec",
+    "project-management",
+    "simple",
+    "csv",
+    "markdown",
+    "ai"
+  ],
+  "homepage": "https://github.com/pmspec/pmspec",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pmspec/pmspec"
+  },
+  "license": "MIT",
+  "author": "PMSpec Contributors",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pmspec": "./bin/pmspec.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "!dist/**/*.test.js",
+    "!dist/**/__tests__",
+    "!dist/**/*.map"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "dev:cli": "npm run build && node bin/pmspec.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/ui": "^3.2.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.0",
+    "@types/inquirer": "^9.0.9",
+    "chalk": "^5.5.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.0",
+    "inquirer": "^12.10.0",
+    "open": "^10.2.0",
+    "ora": "^8.2.0",
+    "zod": "^4.0.17"
+  }
+}

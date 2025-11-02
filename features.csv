@@ -1,0 +1,9 @@
+ID,功能名称,描述,预估工作量(h),分配给,优先级,状态,分组,标签,创建日期,截止日期
+feat-001,用户登录功能,实现用户登录、注册和密码重置功能,16,Alice,high,todo,认证,React;Node.js,2024-01-01,2024-01-15
+feat-002,商品展示功能,展示商品列表、详情和搜索功能,20,Bob,medium,todo,电商,React;CSS,2024-01-01,2024-01-20
+feat-003,购物车功能,实现购物车添加、删除、数量修改和持久化,24,Carol,high,todo,电商,React;TypeScript;Redis,2024-01-01,2024-01-25
+feat-004,订单管理系统,实现订单创建、支付集成和状态跟踪,32,Alice,critical,todo,电商,Node.js;PostgreSQL;Stripe,2024-01-01,2024-01-30
+feat-005,用户个人中心,实现用户信息管理、订单历史和积分系统,18,Bob,medium,todo,电商,React;Node.js,2024-01-05,2024-01-20
+feat-006,后台管理系统,实现用户管理、商品管理和订单管理,40,Carol,high,todo,管理,React;Ant Design,2024-01-10,2024-02-05
+feat-007,数据分析仪表板,实现销售统计、用户行为分析和可视化,28,Alice,medium,todo,分析,D3.js;ECharts,2024-02-01,2024-02-15
+feat-008,移动端适配,实现响应式设计和移动端功能优化,22,Bob,low,todo,优化,React Native;Flutter,2024-01-15,2024-02-10
