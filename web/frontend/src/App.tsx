@@ -6,6 +6,7 @@ import { Features } from './pages/Features';
 import { Epics } from './pages/Epics';
 import { Kanban } from './pages/Kanban';
 import { Gantt } from './pages/Gantt';
+import { AIAssistant } from './pages/AIAssistant';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ function App() {
             <Route path="kanban" element={<Kanban />} />
             <Route path="gantt" element={<Gantt />} />
             <Route path="epics" element={<Epics />} />
+            <Route path="ai" element={<AIAssistant />} />
           </Route>
         </Routes>
       </BrowserRouter>

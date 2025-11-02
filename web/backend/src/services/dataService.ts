@@ -2,7 +2,7 @@ import { readdir, readFile } from 'fs/promises';
 import path from 'path';
 import type { Epic, Feature } from '../../../shared/types';
 
-const PMSPACE_DIR = path.join(process.cwd(), 'pmspace');
+const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
 
 /**
  * Parse metadata from markdown frontmatter-style format

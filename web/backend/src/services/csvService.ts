@@ -3,7 +3,7 @@ import type { Feature } from '../../../shared/types';
 import { writeFile, readFile } from 'fs/promises';
 import path from 'path';
 
-const PMSPACE_DIR = path.join(process.cwd(), 'pmspace');
+const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
 
 interface FeatureCSVRow {
   ID: string;

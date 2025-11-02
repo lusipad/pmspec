@@ -6,7 +6,7 @@ import path from 'path';
 
 export const featureRoutes = Router();
 
-const PMSPACE_DIR = path.join(process.cwd(), 'pmspace');
+const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
 
 // GET /api/features - List all features
 featureRoutes.get('/', async (req: Request, res: Response) => {
