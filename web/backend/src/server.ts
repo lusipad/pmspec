@@ -6,7 +6,6 @@ import { featureRoutes } from './routes/features';
 import { teamRoutes } from './routes/team';
 import { csvRoutes } from './routes/csv';
 import { timelineRoutes } from './routes/timeline';
-import { aiRoutes } from './routes/ai';
 import statsRoutes from './routes/stats.js';
 
 const app: Express = express();
@@ -28,7 +27,6 @@ app.use('/api/features', featureRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/csv', csvRoutes);
 app.use('/api/timeline', timelineRoutes);
-app.use('/api/ai', aiRoutes);
 app.use('/api/stats', statsRoutes);
 
 // Health check
