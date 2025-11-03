@@ -34,8 +34,8 @@ class ApiClient {
   }
 
   // Epics
-  async getEpics() {
-    return this.request('/epics');
+  async getEpics<T = unknown>() {
+    return this.request<T>('/epics');
   }
 
   async getEpic(id: string) {
@@ -43,8 +43,8 @@ class ApiClient {
   }
 
   // Features
-  async getFeatures() {
-    return this.request('/features');
+  async getFeatures<T = unknown>() {
+    return this.request<T>('/features');
   }
 
   async getFeature(id: string) {

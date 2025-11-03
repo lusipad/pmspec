@@ -13,27 +13,39 @@ interface GanttTask {
   status: string;
 }
 
+interface GanttApiResponse {
+  tasks: GanttTask[];
+  criticalPath: string[];
+}
+
 export function Gantt() {
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<GanttApiResponse>({
     queryKey: ['gantt'],
     queryFn: async () => {
       const response = await fetch('http://localhost:3000/api/timeline/gantt');
       if (!response.ok) throw new Error('Failed to fetch gantt data');
-      return response.json();
+      return (await response.json()) as GanttApiResponse;
     },
   });
 
-  const { tasks, criticalPath } = data || { tasks: [], criticalPath: [] };
+  const tasks = data?.tasks ?? [];
+  const criticalPath = data?.criticalPath ?? [];
 
   // Calculate date range
-  const dateRange = useMemo(() => {
-    if (!tasks || tasks.length === 0) return { start: new Date(), end: new Date(), months: [] };
+  const dateRange = useMemo((): { start: Date; end: Date; months: Date[] } => {
+    if (tasks.length === 0) {
+      const current = new Date();
+      return { start: current, end: current, months: [] };
+    }
 
-    const allDates = tasks.flatMap((t: GanttTask) => [new Date(t.start), new Date(t.end)]);
-    const minDate = new Date(Math.min(...allDates.map((d: Date) => d.getTime())));
-    const maxDate = new Date(Math.max(...allDates.map((d: Date) => d.getTime())));
+    const allDates: Date[] = tasks.flatMap((task) => [
+      new Date(task.start),
+      new Date(task.end),
+    ]);
+    const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
 
     // Generate months
     const months: Date[] = [];
@@ -50,8 +62,11 @@ export function Gantt() {
     const start = new Date(taskStart);
     const end = new Date(taskEnd);
 
-    const totalDays = Math.ceil(
-      (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
+    const totalDays = Math.max(
+      1,
+      Math.ceil(
+        (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
+      )
     );
     const startDays = Math.ceil(
       (start.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)

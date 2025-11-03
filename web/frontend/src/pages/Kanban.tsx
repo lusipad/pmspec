@@ -16,46 +16,62 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { api } from '../services/api';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { FeatureCard } from '../components/Kanban/FeatureCard';
-import type { Feature } from '../../../shared/types';
+
+interface Feature {
+  id: string;
+  epic: string;
+  title: string;
+  status: 'todo' | 'in-progress' | 'done';
+  assignee: string;
+  estimate: number;
+  actual: number;
+  skillsRequired: string[];
+}
 
 export function Kanban() {
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [epicFilter, setEpicFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const { data: features, isLoading, error } = useQuery({
+  const { data: featuresData, isLoading, error } = useQuery<Feature[]>({
     queryKey: ['features'],
-    queryFn: () => api.getFeatures(),
+    queryFn: () => api.getFeatures<Feature[]>(),
   });
 
-  useQuery({
-    queryKey: ['epics'],
-    queryFn: () => api.getEpics(),
-  });
+  const features: Feature[] = featuresData ?? [];
+
+  type FeatureStatus = Feature['status'];
+
+  const isFeatureStatus = (value: string): value is FeatureStatus =>
+    value === 'todo' || value === 'in-progress' || value === 'done';
 
   // Update feature status mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
+  const updateMutation = useMutation<
+    unknown,
+    unknown,
+    { id: string; status: Feature['status'] },
+    { previousFeatures?: Feature[] }
+  >({
+    mutationFn: ({ id, status }) =>
       api.updateFeature(id, { status }),
     onMutate: async ({ id, status }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['features'] });
 
       // Snapshot the previous value
-      const previousFeatures = queryClient.getQueryData(['features']);
+      const previousFeatures = queryClient.getQueryData<Feature[]>(['features']);
 
       // Optimistically update
-      queryClient.setQueryData(['features'], (old: any) =>
-        old.map((f: Feature) => (f.id === id ? { ...f, status } : f))
+      queryClient.setQueryData<Feature[]>(['features'], (old = []) =>
+        old.map((feature) => (feature.id === id ? { ...feature, status } : feature))
       );
 
       return { previousFeatures };
     },
-    onError: (_err, _variables, context) => {
+    onError: (_error, _variables, context) => {
       // Rollback on error
       if (context?.previousFeatures) {
         queryClient.setQueryData(['features'], context.previousFeatures);
@@ -77,11 +93,11 @@ export function Kanban() {
 
   // Get unique values for filters
   const { epicsList, assigneesList } = useMemo(() => {
-    if (!features) return { epicsList: [], assigneesList: [] };
+    if (features.length === 0) return { epicsList: [], assigneesList: [] };
 
-    const epicsSet = new Set((features as Feature[]).map((f) => f.epic));
+    const epicsSet = new Set(features.map((feature) => feature.epic));
     const assigneesSet = new Set(
-      (features as Feature[]).map((f) => f.assignee).filter(Boolean)
+      features.map((feature) => feature.assignee).filter(Boolean)
     );
 
     return {
@@ -92,9 +108,7 @@ export function Kanban() {
 
   // Filter features
   const filteredFeatures = useMemo(() => {
-    if (!features) return [];
-
-    let result = [...(features as Feature[])];
+    let result = [...features];
 
     if (searchTerm) {
       result = result.filter(
@@ -108,16 +122,12 @@ export function Kanban() {
       result = result.filter((f) => f.epic === epicFilter);
     }
 
-    if (priorityFilter !== 'all') {
-      result = result.filter((f) => (f.priority || 'medium') === priorityFilter);
-    }
-
     if (assigneeFilter !== 'all') {
       result = result.filter((f) => f.assignee === assigneeFilter);
     }
 
     return result;
-  }, [features, searchTerm, epicFilter, priorityFilter, assigneeFilter]);
+  }, [features, searchTerm, epicFilter, assigneeFilter]);
 
   // Group features by status
   const columns = useMemo(() => {
@@ -133,7 +143,7 @@ export function Kanban() {
   }, [filteredFeatures]);
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    setActiveId(String(event.active.id));
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -141,15 +151,15 @@ export function Kanban() {
 
     if (!over) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const activeId = String(active.id);
+    const overId = String(over.id);
 
     // Find which column the item is being dragged over
     const activeFeature = filteredFeatures.find((f) => f.id === activeId);
     if (!activeFeature) return;
 
     // Check if overId is a column (status)
-    if (['todo', 'in-progress', 'done'].includes(overId)) {
+    if (isFeatureStatus(overId)) {
       if (activeFeature.status !== overId) {
         updateMutation.mutate({ id: activeId, status: overId });
       }
@@ -163,14 +173,14 @@ export function Kanban() {
 
     if (!over) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const activeId = String(active.id);
+    const overId = String(over.id);
 
     const activeFeature = filteredFeatures.find((f) => f.id === activeId);
     if (!activeFeature) return;
 
     // If dropped on a column
-    if (['todo', 'in-progress', 'done'].includes(overId)) {
+    if (isFeatureStatus(overId)) {
       if (activeFeature.status !== overId) {
         updateMutation.mutate({ id: activeId, status: overId });
       }
@@ -231,20 +241,6 @@ export function Kanban() {
 
           <div>
             <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Priorities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-
-          <div>
-            <select
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -258,12 +254,11 @@ export function Kanban() {
             </select>
           </div>
 
-          {(searchTerm || epicFilter !== 'all' || priorityFilter !== 'all' || assigneeFilter !== 'all') && (
+          {(searchTerm || epicFilter !== 'all' || assigneeFilter !== 'all') && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setEpicFilter('all');
-                setPriorityFilter('all');
                 setAssigneeFilter('all');
               }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
@@ -273,7 +268,7 @@ export function Kanban() {
           )}
 
           <div className="text-sm text-gray-600">
-            {filteredFeatures.length} of {(features as Feature[])?.length || 0} features
+            {filteredFeatures.length} of {features.length} features
           </div>
         </div>
       </div>
