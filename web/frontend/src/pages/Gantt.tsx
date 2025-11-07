@@ -32,8 +32,8 @@ export function Gantt() {
     if (!tasks || tasks.length === 0) return { start: new Date(), end: new Date(), months: [] };
 
     const allDates = tasks.flatMap((t: GanttTask) => [new Date(t.start), new Date(t.end)]);
-    const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
-    const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
+    const minDate = new Date(Math.min(...allDates.map((d: Date) => d.getTime())));
+    const maxDate = new Date(Math.max(...allDates.map((d: Date) => d.getTime())));
 
     // Generate months
     const months: Date[] = [];

@@ -41,7 +41,7 @@ export function Kanban() {
     queryFn: () => api.getFeatures(),
   });
 
-  const { data: epics } = useQuery({
+  useQuery({
     queryKey: ['epics'],
     queryFn: () => api.getEpics(),
   });
@@ -64,7 +64,7 @@ export function Kanban() {
 
       return { previousFeatures };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       // Rollback on error
       if (context?.previousFeatures) {
         queryClient.setQueryData(['features'], context.previousFeatures);

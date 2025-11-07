@@ -113,6 +113,43 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Statistics
+  async getOverviewStats() {
+    return this.request('/stats/overview');
+  }
+
+  async getTrends() {
+    return this.request('/stats/trends');
+  }
+
+  async getTeamWorkload() {
+    return this.request('/stats/team-workload');
+  }
+
+  async getEpicProgress() {
+    return this.request('/stats/epic-progress');
+  }
+
+  // Timeline
+  async getGanttData() {
+    return this.request('/timeline/gantt');
+  }
+
+  // AI
+  async breakdownRequirements(requirements: string) {
+    return this.request('/ai/breakdown', {
+      method: 'POST',
+      body: JSON.stringify({ requirements }),
+    });
+  }
+
+  async estimateFeature(description: string) {
+    return this.request('/ai/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);
