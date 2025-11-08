@@ -264,6 +264,7 @@ npm run dev:cli -- init
 
 - **[快速入门指南 (QUICKSTART.md)](./QUICKSTART.md)** - 5 分钟上手 PMSpec
 - **[AI 使用指南 (AI_GUIDE.md)](./AI_GUIDE.md)** - Claude Code AI 辅助功能详解
+- **[发布指南 (PUBLISHING.md)](./PUBLISHING.md)** - 如何发布包到 npm
 - **[示例项目 (examples/)](./examples/)** - 真实项目示例和最佳实践
 
 ## 📊 项目状态
