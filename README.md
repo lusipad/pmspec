@@ -264,6 +264,7 @@ npm run dev:cli -- init
 
 - **[Quick Start Guide (QUICKSTART.md)](./QUICKSTART.md)** - Get started with PMSpec in 5 minutes
 - **[AI Guide (AI_GUIDE.md)](./AI_GUIDE.md)** - Detailed guide on Claude Code AI assistance
+- **[Publishing Guide (PUBLISHING.md)](./PUBLISHING.md)** - How to publish the package to npm
 - **[Examples (examples/)](./examples/)** - Real-world examples and best practices
 
 ## 📊 Project Status
