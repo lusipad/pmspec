@@ -7,9 +7,10 @@ import { teamRoutes } from './routes/team';
 import { csvRoutes } from './routes/csv';
 import { timelineRoutes } from './routes/timeline';
 import { aiRoutes } from './routes/ai';
+import statsRoutes from './routes/stats.js';
 
 const app: Express = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 // Middleware
 app.use(cors());
@@ -28,6 +29,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/csv', csvRoutes);
 app.use('/api/timeline', timelineRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {

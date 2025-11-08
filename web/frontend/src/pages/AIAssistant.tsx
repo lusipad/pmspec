@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../services/api';
 
 export function AIAssistant() {
   const [requirements, setRequirements] = useState('');
@@ -17,20 +18,7 @@ export function AIAssistant() {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:3000/api/ai/breakdown', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ requirements }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'AI 处理失败');
-      }
-
-      const data = await response.json();
+      const data: any = await api.breakdownRequirements(requirements);
       setResult(data.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : '未知错误');
