@@ -80,12 +80,19 @@ function parseFeatureContent(content: string): Feature {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  // Parse priority (with validation and default)
+  const priority = metadata['Priority']?.toLowerCase();
+  const validPriority = ['critical', 'high', 'medium', 'low'].includes(priority || '')
+    ? (priority as any)
+    : 'medium';
+
   return {
     id: metadata['ID'] || '',
     epic: metadata['Epic'] || '',
     title,
     description,
     status: (metadata['Status'] as any) || 'todo',
+    priority: validPriority,
     assignee: metadata['Assignee'] || '',
     estimate: parseInt(metadata['Estimate']) || 0,
     actual: parseInt(metadata['Actual']) || 0,

@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
+import { PriorityBadge } from '../components/PriorityBadge';
 
 export function Features() {
   const queryClient = useQueryClient();
@@ -8,6 +9,7 @@ export function Features() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [sortBy, setSortBy] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -105,6 +107,11 @@ export function Features() {
       result = result.filter((f) => f.status === statusFilter);
     }
 
+    // Apply priority filter
+    if (priorityFilter !== 'all') {
+      result = result.filter((f) => (f.priority || 'medium') === priorityFilter);
+    }
+
     // Apply assignee filter
     if (assigneeFilter !== 'all') {
       result = result.filter((f) => f.assignee === assigneeFilter);
@@ -132,7 +139,7 @@ export function Features() {
     });
 
     return result;
-  }, [features, searchTerm, statusFilter, assigneeFilter, sortBy, sortOrder]);
+  }, [features, searchTerm, statusFilter, priorityFilter, assigneeFilter, sortBy, sortOrder]);
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -222,6 +229,20 @@ export function Features() {
 
         <div>
           <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Priorities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+
+        <div>
+          <select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -235,11 +256,12 @@ export function Features() {
           </select>
         </div>
 
-        {(searchTerm || statusFilter !== 'all' || assigneeFilter !== 'all') && (
+        {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assigneeFilter !== 'all') && (
           <button
             onClick={() => {
               setSearchTerm('');
               setStatusFilter('all');
+              setPriorityFilter('all');
               setAssigneeFilter('all');
             }}
             className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
@@ -271,6 +293,12 @@ export function Features() {
                 Title {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
               </th>
               <th
+                onClick={() => handleSort('priority')}
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+              >
+                Priority {sortBy === 'priority' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th
                 onClick={() => handleSort('status')}
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
               >
@@ -298,6 +326,9 @@ export function Features() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {feature.title}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <PriorityBadge priority={feature.priority} size="small" />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span
