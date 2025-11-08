@@ -11,12 +11,16 @@ export interface Epic {
   features: string[];
 }
 
+export type Priority = 'critical' | 'high' | 'medium' | 'low';
+export type WorkloadSize = 'S' | 'M' | 'L' | 'XL';
+
 export interface Feature {
   id: string;
   epic: string;
   title: string;
   description: string;
   status: 'todo' | 'in-progress' | 'done';
+  priority?: Priority;
   assignee: string;
   estimate: number;
   actual: number;

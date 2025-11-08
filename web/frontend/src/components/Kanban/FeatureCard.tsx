@@ -1,16 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-interface Feature {
-  id: string;
-  epic: string;
-  title: string;
-  status: string;
-  assignee: string;
-  estimate: number;
-  actual: number;
-  skillsRequired: string[];
-}
+import type { Feature } from '../../../../shared/types';
+import { PriorityBadge } from '../PriorityBadge';
+import { WorkloadIndicator } from '../WorkloadIndicator';
+import {
+  getPriorityColor,
+  getPriorityBorderWidth,
+  getPriorityOpacity,
+  getPriorityShadow,
+  getCardMinHeight,
+  shouldShowBreakdownWarning,
+} from '../../utils/visualHelpers';
 
 interface FeatureCardProps {
   feature: Feature;
@@ -26,14 +26,27 @@ export function FeatureCard({ feature }: FeatureCardProps) {
     isDragging,
   } = useSortable({ id: feature.id });
 
+  const progress = feature.estimate > 0 ? (feature.actual / feature.estimate) * 100 : 0;
+  const isOverBudget = feature.actual > feature.estimate;
+
+  // Get priority-based styling
+  const priorityColors = getPriorityColor(feature.priority);
+  const borderWidth = getPriorityBorderWidth(feature.priority);
+  const opacity = getPriorityOpacity(feature.priority);
+  const shadow = getPriorityShadow(feature.priority);
+  const minHeight = getCardMinHeight(feature.estimate);
+  const showBreakdown = shouldShowBreakdownWarning(feature.estimate);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.5 : opacity,
+    borderColor: priorityColors.border,
+    borderWidth,
+    backgroundColor: priorityColors.bg,
+    boxShadow: shadow,
+    minHeight,
   };
-
-  const progress = feature.estimate > 0 ? (feature.actual / feature.estimate) * 100 : 0;
-  const isOverBudget = feature.actual > feature.estimate;
 
   return (
     <div
@@ -41,12 +54,20 @@ export function FeatureCard({ feature }: FeatureCardProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`bg-white rounded-lg shadow-sm border p-4 mb-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-        isOverBudget ? 'border-red-300' : 'border-gray-200'
-      }`}
+      className="bg-white rounded-lg shadow-sm border p-4 mb-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all relative"
     >
-      {/* Header */}
-      <div className="flex justify-between items-start mb-2">
+      {/* Priority Badge - Top Right */}
+      <div className="absolute top-2 right-2">
+        <PriorityBadge priority={feature.priority} size="small" />
+      </div>
+
+      {/* Workload Indicator - Top Left */}
+      <div className="absolute top-2 left-2">
+        <WorkloadIndicator estimate={feature.estimate} />
+      </div>
+
+      {/* Header with spacing for badges */}
+      <div className="flex justify-between items-start mb-2 mt-8">
         <div className="flex-1">
           <div className="text-xs font-medium text-gray-500 mb-1">{feature.id}</div>
           <div className="font-semibold text-gray-900 text-sm leading-tight">
@@ -92,6 +113,15 @@ export function FeatureCard({ feature }: FeatureCardProps) {
               Over budget: +{feature.actual - feature.estimate}h
             </div>
           )}
+        </div>
+      )}
+
+      {/* Breakdown Warning for XL tasks */}
+      {showBreakdown && (
+        <div className="mb-3 bg-orange-50 border border-orange-200 rounded p-2">
+          <div className="text-xs text-orange-800 font-medium">
+            ⚠️ Consider breaking down this large task
+          </div>
         </div>
       )}
 

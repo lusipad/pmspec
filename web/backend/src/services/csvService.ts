@@ -10,6 +10,7 @@ interface FeatureCSVRow {
   Epic: string;
   Title: string;
   Status: string;
+  Priority?: string;
   Assignee: string;
   Estimate: string;
   Actual: string;
@@ -26,6 +27,7 @@ function featureToCSVRow(feature: Feature): FeatureCSVRow {
     Epic: feature.epic,
     Title: feature.title,
     Status: feature.status,
+    Priority: feature.priority || 'medium',
     Assignee: feature.assignee || '',
     Estimate: feature.estimate.toString(),
     Actual: feature.actual.toString(),
@@ -42,12 +44,18 @@ function csvRowToFeature(row: FeatureCSVRow): Feature {
     ? row['Skills Required'].split(',').map((s) => s.trim()).filter(Boolean)
     : [];
 
+  const priority = row.Priority?.toLowerCase();
+  const validPriority = ['critical', 'high', 'medium', 'low'].includes(priority || '')
+    ? (priority as any)
+    : 'medium';
+
   return {
     id: row.ID,
     epic: row.Epic,
     title: row.Title,
     description: row.Description || '',
     status: (row.Status as any) || 'todo',
+    priority: validPriority,
     assignee: row.Assignee || '',
     estimate: parseInt(row.Estimate) || 0,
     actual: parseInt(row.Actual) || 0,
@@ -88,6 +96,11 @@ function validateFeatureRow(row: FeatureCSVRow, rowIndex: number): ValidationErr
     errors.push({ row: rowIndex, field: 'Status', message: 'Status must be todo, in-progress, or done' });
   }
 
+  // Priority validation (optional field)
+  if (row.Priority && !['critical', 'high', 'medium', 'low'].includes(row.Priority.toLowerCase())) {
+    errors.push({ row: rowIndex, field: 'Priority', message: 'Priority must be: critical, high, medium, or low' });
+  }
+
   // Numeric fields
   if (row.Estimate && isNaN(parseInt(row.Estimate))) {
     errors.push({ row: rowIndex, field: 'Estimate', message: 'Estimate must be a number' });
@@ -106,7 +119,7 @@ function validateFeatureRow(row: FeatureCSVRow, rowIndex: number): ValidationErr
 export function featuresToCSV(features: Feature[]): string {
   const rows = features.map(featureToCSVRow);
   return Papa.unparse(rows, {
-    columns: ['ID', 'Epic', 'Title', 'Status', 'Assignee', 'Estimate', 'Actual', 'Skills Required', 'Description'],
+    columns: ['ID', 'Epic', 'Title', 'Status', 'Priority', 'Assignee', 'Estimate', 'Actual', 'Skills Required', 'Description'],
   });
 }
 
@@ -146,6 +159,7 @@ function generateFeatureMarkdown(feature: Feature): string {
 - **ID**: ${feature.id}
 - **Epic**: ${feature.epic}
 - **Status**: ${feature.status}
+- **Priority**: ${feature.priority || 'medium'}
 - **Assignee**: ${feature.assignee || ''}
 - **Estimate**: ${feature.estimate} hours
 - **Actual**: ${feature.actual} hours
@@ -182,6 +196,7 @@ export function getCSVTemplate(): string {
       Epic: 'EPIC-001',
       Title: 'Example Feature',
       Status: 'todo',
+      Priority: 'high',
       Assignee: 'Alice',
       Estimate: '16',
       Actual: '0',
@@ -193,15 +208,28 @@ export function getCSVTemplate(): string {
       Epic: 'EPIC-001',
       Title: 'Another Feature',
       Status: 'in-progress',
+      Priority: 'medium',
       Assignee: 'Bob',
       Estimate: '24',
       Actual: '10',
       'Skills Required': 'Node.js, Express',
       Description: 'Another example feature',
     },
+    {
+      ID: 'FEAT-003',
+      Epic: 'EPIC-002',
+      Title: 'Critical Bug Fix',
+      Status: 'todo',
+      Priority: 'critical',
+      Assignee: 'Charlie',
+      Estimate: '8',
+      Actual: '0',
+      'Skills Required': 'Debugging, Testing',
+      Description: 'Fix critical production issue',
+    },
   ];
 
   return Papa.unparse(template, {
-    columns: ['ID', 'Epic', 'Title', 'Status', 'Assignee', 'Estimate', 'Actual', 'Skills Required', 'Description'],
+    columns: ['ID', 'Epic', 'Title', 'Status', 'Priority', 'Assignee', 'Estimate', 'Actual', 'Skills Required', 'Description'],
   });
 }

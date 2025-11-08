@@ -1,0 +1,50 @@
+# Automatically label PRs based on changed files
+
+frontend:
+  - changed-files:
+    - any-glob-to-any-file: 'web/frontend/**/*'
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: 'web/backend/**/*'
+
+cli:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/**/*'
+      - 'bin/**/*'
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**/*'
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'package.json'
+      - 'package-lock.json'
+      - '**/package.json'
+      - '**/package-lock.json'
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.test.ts'
+      - '**/*.test.tsx'
+      - '**/__tests__/**/*'
+
+openspec:
+  - changed-files:
+    - any-glob-to-any-file: 'openspec/**/*'
+
+github-actions:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/workflows/**/*'
+      - '.github/dependabot.yml'
+
+shared:
+  - changed-files:
+    - any-glob-to-any-file: 'web/shared/**/*'

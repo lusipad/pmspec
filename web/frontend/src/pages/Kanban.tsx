@@ -16,23 +16,14 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { api } from '../services/api';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { FeatureCard } from '../components/Kanban/FeatureCard';
-
-interface Feature {
-  id: string;
-  epic: string;
-  title: string;
-  status: 'todo' | 'in-progress' | 'done';
-  assignee: string;
-  estimate: number;
-  actual: number;
-  skillsRequired: string[];
-}
+import type { Feature } from '../../../shared/types';
 
 export function Kanban() {
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [epicFilter, setEpicFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -117,12 +108,16 @@ export function Kanban() {
       result = result.filter((f) => f.epic === epicFilter);
     }
 
+    if (priorityFilter !== 'all') {
+      result = result.filter((f) => (f.priority || 'medium') === priorityFilter);
+    }
+
     if (assigneeFilter !== 'all') {
       result = result.filter((f) => f.assignee === assigneeFilter);
     }
 
     return result;
-  }, [features, searchTerm, epicFilter, assigneeFilter]);
+  }, [features, searchTerm, epicFilter, priorityFilter, assigneeFilter]);
 
   // Group features by status
   const columns = useMemo(() => {
@@ -236,6 +231,20 @@ export function Kanban() {
 
           <div>
             <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Priorities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+
+          <div>
+            <select
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -249,11 +258,12 @@ export function Kanban() {
             </select>
           </div>
 
-          {(searchTerm || epicFilter !== 'all' || assigneeFilter !== 'all') && (
+          {(searchTerm || epicFilter !== 'all' || priorityFilter !== 'all' || assigneeFilter !== 'all') && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setEpicFilter('all');
+                setPriorityFilter('all');
                 setAssigneeFilter('all');
               }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900"

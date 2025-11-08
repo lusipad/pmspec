@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # CLI Core Tests
+  cli-test:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build CLI
+        run: npm run build
+
+  # Frontend Tests and Build
+  frontend:
+    name: Frontend Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: web/frontend/dist/
+          retention-days: 7
+
+  # Backend Build
+  backend:
+    name: Backend Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/backend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: web/backend/dist/
+          retention-days: 7
+
+  # Type checking for shared types
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CLI dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: ./web/frontend
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: ./web/backend
+        run: npm ci
+
+      - name: Type check CLI
+        run: npx tsc --noEmit
+
+      - name: Type check frontend
+        working-directory: ./web/frontend
+        run: npx tsc --noEmit
+
+      - name: Type check backend
+        working-directory: ./web/backend
+        run: npx tsc --noEmit
+
+  # All checks passed
+  all-checks:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [cli-test, frontend, backend, typecheck]
+
+    steps:
+      - name: Report success
+        run: echo "All CI checks passed successfully! ✅"
