@@ -1,0 +1,34 @@
+# CODEOWNERS file
+# These owners will be the default reviewers for everything in the repo.
+# Unless a later match takes precedence, these owners will be requested for
+# review when someone opens a pull request.
+
+# Default owners for everything
+*       @lusipad
+
+# CLI core
+/src/           @lusipad
+/bin/           @lusipad
+
+# Frontend
+/web/frontend/  @lusipad
+
+# Backend
+/web/backend/   @lusipad
+
+# Shared types
+/web/shared/    @lusipad
+
+# Documentation
+*.md            @lusipad
+/docs/          @lusipad
+
+# OpenSpec
+/openspec/      @lusipad
+
+# GitHub workflows and CI/CD
+/.github/       @lusipad
+
+# Configuration files
+package.json    @lusipad
+tsconfig.json   @lusipad
