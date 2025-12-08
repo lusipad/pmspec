@@ -14,13 +14,13 @@
   "description": "PMSpec Web Backend API",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.1.0",
+    "express": "^5.2.1",
     "multer": "^2.0.2",
     "papaparse": "^5.5.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.5",
+    "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.3.16",
