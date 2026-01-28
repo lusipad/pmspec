@@ -16,6 +16,67 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+interface OverviewStats {
+  features: {
+    total: number;
+    byStatus: {
+      todo: number;
+      'in-progress': number;
+      done: number;
+    };
+  };
+  epics: {
+    total: number;
+    byStatus: {
+      planning: number;
+      'in-progress': number;
+      completed: number;
+    };
+  };
+  totalEstimate: number;
+  totalActual: number;
+}
+
+interface TrendData {
+  date: string;
+  completed: number;
+  inProgress: number;
+  todo: number;
+}
+
+interface TrendsResponse {
+  trends: TrendData[];
+}
+
+interface WorkloadItem {
+  name: string;
+  capacity: number;
+  assigned: number;
+  completed: number;
+}
+
+interface TeamWorkloadResponse {
+  workload: WorkloadItem[];
+}
+
+interface EpicProgressItem {
+  id: string;
+  title: string;
+  status: string;
+  featureCount: number;
+  progress: number;
+  hoursProgress: number;
+}
+
+interface EpicProgressResponse {
+  epics: EpicProgressItem[];
+}
+
+interface PieLabelProps {
+  name: string;
+  percent: number;
+}
+
 const COLORS = {
   todo: '#94a3b8',
   'in-progress': '#3b82f6',
@@ -25,22 +86,22 @@ const COLORS = {
 };
 
 export function Dashboard() {
-  const { data: overview, isLoading: overviewLoading } = useQuery({
+  const { data: overview, isLoading: overviewLoading } = useQuery<OverviewStats>({
     queryKey: ['stats', 'overview'],
     queryFn: () => api.getOverviewStats(),
   });
 
-  const { data: trends, isLoading: trendsLoading } = useQuery({
+  const { data: trends, isLoading: trendsLoading } = useQuery<TrendsResponse>({
     queryKey: ['stats', 'trends'],
     queryFn: () => api.getTrends(),
   });
 
-  const { data: teamWorkload, isLoading: teamLoading } = useQuery({
+  const { data: teamWorkload, isLoading: teamLoading } = useQuery<TeamWorkloadResponse>({
     queryKey: ['stats', 'team-workload'],
     queryFn: () => api.getTeamWorkload(),
   });
 
-  const { data: epicProgress, isLoading: epicLoading } = useQuery({
+  const { data: epicProgress, isLoading: epicLoading } = useQuery<EpicProgressResponse>({
     queryKey: ['stats', 'epic-progress'],
     queryFn: () => api.getEpicProgress(),
   });
@@ -53,7 +114,7 @@ export function Dashboard() {
     );
   }
 
-  const stats = overview as any;
+  const stats = overview;
 
   // Prepare pie chart data
   const featureStatusData = [
@@ -215,7 +276,7 @@ export function Dashboard() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }: PieLabelProps) => `${name} ${(percent * 100).toFixed(0)}%`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
@@ -238,7 +299,7 @@ export function Dashboard() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={(trends as any)?.trends || []}>
+              <LineChart data={trends?.trends || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
@@ -280,7 +341,7 @@ export function Dashboard() {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={(teamWorkload as any)?.workload || []}>
+            <BarChart data={teamWorkload?.workload || []}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
@@ -324,7 +385,7 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {((epicProgress as any)?.epics || []).map((epic: any) => (
+                {(epicProgress?.epics || []).map((epic) => (
                   <tr key={epic.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{epic.title}</div>

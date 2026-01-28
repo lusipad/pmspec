@@ -2,6 +2,18 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+interface FeatureInput {
+  id?: string;
+  epic?: string;
+  title?: string;
+  priority?: 'P0' | 'P1' | 'P2' | 'P3';
+  status?: 'todo' | 'in-progress' | 'done';
+  assignee?: string;
+  estimate?: number;
+  actual?: number;
+  skillsRequired?: string[];
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -94,14 +106,14 @@ class ApiClient {
   }
 
   // Feature CRUD
-  async createFeature(feature: any) {
+  async createFeature(feature: FeatureInput) {
     return this.request('/features', {
       method: 'POST',
       body: JSON.stringify(feature),
     });
   }
 
-  async updateFeature(id: string, updates: any) {
+  async updateFeature(id: string, updates: Partial<FeatureInput>) {
     return this.request(`/features/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),

@@ -1,10 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 
+interface Epic {
+  id: string;
+  title: string;
+  description: string;
+  status: 'planning' | 'in-progress' | 'completed';
+  owner?: string;
+  estimate: number;
+  features?: string[];
+}
+
 export function Epics() {
-  const { data: epics, isLoading, error } = useQuery({
+  const { data: epics, isLoading, error } = useQuery<Epic[]>({
     queryKey: ['epics'],
-    queryFn: () => api.getEpics(),
+    queryFn: () => api.getEpics<Epic[]>(),
   });
 
   if (isLoading) {
@@ -28,7 +38,7 @@ export function Epics() {
       <h2 className="text-3xl font-bold text-gray-900 mb-6">Epics</h2>
 
       <div className="grid gap-6">
-        {(epics as any[])?.map((epic: any) => (
+        {epics?.map((epic) => (
           <div key={epic.id} className="bg-white shadow rounded-lg p-6">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -63,7 +73,7 @@ export function Epics() {
           </div>
         ))}
 
-        {(!epics || (epics as any[]).length === 0) && (
+        {(!epics || epics.length === 0) && (
           <div className="bg-white shadow rounded-lg p-12 text-center text-gray-500">
             No epics found. Run `pmspec init` and create some epics.
           </div>

@@ -41,7 +41,7 @@ export function Kanban() {
     queryFn: () => api.getFeatures<Feature[]>(),
   });
 
-  const features: Feature[] = featuresData ?? [];
+  const features = useMemo<Feature[]>(() => featuresData ?? [], [featuresData]);
 
   type FeatureStatus = Feature['status'];
 

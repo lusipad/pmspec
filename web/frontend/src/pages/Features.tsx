@@ -3,6 +3,29 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { PriorityBadge } from '../components/PriorityBadge';
 
+interface Feature {
+  id: string;
+  epic: string;
+  title: string;
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  status: 'todo' | 'in-progress' | 'done';
+  assignee: string;
+  estimate: number;
+  actual: number;
+  skillsRequired: string[];
+}
+
+interface ImportError {
+  row: number;
+  field: string;
+  message: string;
+}
+
+interface ImportApiError extends Error {
+  errors?: ImportError[];
+  error?: string;
+}
+
 export function Features() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -14,9 +37,9 @@ export function Features() {
   const [sortBy, setSortBy] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
-  const { data: features, isLoading, error } = useQuery({
+  const { data: features, isLoading } = useQuery<Feature[]>({
     queryKey: ['features'],
-    queryFn: () => api.getFeatures(),
+    queryFn: () => api.getFeatures<Feature[]>(),
   });
 
   // CSV Export
@@ -46,7 +69,7 @@ export function Features() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
+    } catch {
       alert('Failed to download template');
     }
   };
@@ -58,10 +81,10 @@ export function Features() {
       queryClient.invalidateQueries({ queryKey: ['features'] });
       alert(`Import successful! Created: ${result.created}, Updated: ${result.updated}`);
     },
-    onError: (error: any) => {
+    onError: (error: ImportApiError) => {
       if (error.errors && error.errors.length > 0) {
         const errorMsg = error.errors
-          .map((e: any) => `Row ${e.row}: ${e.field} - ${e.message}`)
+          .map((e) => `Row ${e.row}: ${e.field} - ${e.message}`)
           .join('\n');
         alert(`Import failed:\n\n${errorMsg}`);
       } else {
@@ -84,7 +107,7 @@ export function Features() {
   // Get unique assignees for filter
   const assignees = useMemo(() => {
     if (!features) return [];
-    const uniqueAssignees = new Set((features as any[]).map((f: any) => f.assignee).filter(Boolean));
+    const uniqueAssignees = new Set(features.map((f) => f.assignee).filter(Boolean));
     return Array.from(uniqueAssignees).sort();
   }, [features]);
 
@@ -92,7 +115,7 @@ export function Features() {
   const filteredAndSortedFeatures = useMemo(() => {
     if (!features) return [];
 
-    let result = [...(features as any[])];
+    let result = [...features];
 
     // Apply search filter
     if (searchTerm) {
@@ -271,7 +294,7 @@ export function Features() {
         )}
 
         <div className="text-sm text-gray-600">
-          Showing {filteredAndSortedFeatures.length} of {(features as any[])?.length || 0}
+          Showing {filteredAndSortedFeatures.length} of {features?.length || 0}
         </div>
       </div>
 
@@ -319,7 +342,7 @@ export function Features() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredAndSortedFeatures.map((feature: any) => (
+            {filteredAndSortedFeatures.map((feature) => (
               <tr key={feature.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {feature.id}
@@ -356,7 +379,7 @@ export function Features() {
 
         {filteredAndSortedFeatures.length === 0 && (
           <div className="text-center py-12 text-gray-500">
-            {(features as any[]).length === 0
+            {features?.length === 0
               ? 'No features found. Run `pmspec init` and create some features.'
               : 'No features match the current filters.'}
           </div>

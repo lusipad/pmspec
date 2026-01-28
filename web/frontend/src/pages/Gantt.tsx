@@ -30,8 +30,8 @@ export function Gantt() {
     },
   });
 
-  const tasks = data?.tasks ?? [];
-  const criticalPath = data?.criticalPath ?? [];
+  const tasks = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+  const criticalPath = useMemo(() => data?.criticalPath ?? [], [data?.criticalPath]);
 
   // Calculate date range
   const dateRange = useMemo((): { start: Date; end: Date; months: Date[] } => {
