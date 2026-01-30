@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { ChangeHistoryTimeline, type ChangelogEntry } from './ChangeHistoryTimeline';
 import { DiffModal } from './DiffView';
@@ -35,12 +35,6 @@ export function EntityChangeHistory({ entityId, title = 'Change History' }: Enti
 
     fetchHistory();
   }, [entityId]);
-
-  const handleEntryClick = useCallback((entry: ChangelogEntry) => {
-    if (entry.action === 'update' && entry.field) {
-      setSelectedEntry(entry);
-    }
-  }, []);
 
   if (loading) {
     return (

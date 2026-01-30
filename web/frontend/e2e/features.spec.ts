@@ -22,9 +22,9 @@ test.describe('Features Page', () => {
 
   test('should have a feature table or list', async ({ page }) => {
     // Look for table or list elements
-    const hasTable = await page.locator('table').count() > 0;
-    const hasList = await page.locator('ul, ol, [role="list"]').count() > 0;
-    const hasGrid = await page.locator('[role="grid"], .grid').count() > 0;
+    await page.locator('table').count();
+    await page.locator('ul, ol, [role="list"]').count();
+    await page.locator('[role="grid"], .grid').count();
     
     // At least one of these should be present for feature display
     // Allow empty state if no features are loaded
@@ -48,7 +48,7 @@ test.describe('Features Page Interaction', () => {
     
     // Look for search input
     const searchInput = page.getByPlaceholder(/搜索|search|filter/i);
-    const hasSearch = await searchInput.count() > 0;
+    await searchInput.count();
     
     // Search is optional, so just verify page loads
     await expect(page).toHaveURL('/features');
@@ -80,8 +80,8 @@ test.describe('Features Page Filter', () => {
     await page.goto('/features');
     
     // Look for filter elements
-    const hasFilter = await page.locator('select, [role="combobox"], [data-testid*="filter"]').count() > 0;
-    const hasButtons = await page.getByRole('button').count() > 0;
+    await page.locator('select, [role="combobox"], [data-testid*="filter"]').count();
+    await page.getByRole('button').count();
     
     // Verify page structure is intact
     await expect(page.locator('body')).toBeVisible();

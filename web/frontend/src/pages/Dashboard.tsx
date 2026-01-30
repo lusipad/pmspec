@@ -86,15 +86,11 @@ interface EpicProgressResponse {
   epics: EpicProgressItem[];
 }
 
-interface PieLabelProps {
-  name: string;
-  percent: number;
-  cx: number;
-  cy: number;
-  midAngle: number;
-  innerRadius: number;
-  outerRadius: number;
-}
+// PieLabelProps used for recharts Pie label function typing
+type _PieLabelProps = {
+  name?: string;
+  percent?: number;
+};
 
 const COLORS = {
   todo: '#94a3b8',

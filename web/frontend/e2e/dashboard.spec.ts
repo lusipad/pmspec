@@ -33,7 +33,7 @@ test.describe('Dashboard Page', () => {
 
   test('should display stats or summary cards', async ({ page }) => {
     // Look for card-like elements that might show statistics
-    const statsCount = await dashboardPage.getStatsCardsCount();
+    await dashboardPage.getStatsCardsCount();
     
     // Dashboard typically has some visual elements
     // This test is flexible as actual content depends on data

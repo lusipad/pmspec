@@ -24,7 +24,7 @@ test.describe('Kanban Page', () => {
     
     // Kanban board should have a flex/grid layout with columns
     // Check for board-like structure
-    const hasBoard = await kanbanPage.hasKanbanBoard();
+    await kanbanPage.hasKanbanBoard();
     
     // Board should be visible (even if empty)
     await expect(page.locator('body')).toBeVisible();
@@ -40,10 +40,9 @@ test.describe('Kanban Page', () => {
     const doneText = page.getByText(/done|已完成|完成/i);
     
     // At least some status indicators should be present
-    const hasStatuses = 
-      await todoText.count() > 0 ||
-      await doingText.count() > 0 ||
-      await doneText.count() > 0;
+    await todoText.count();
+    await doingText.count();
+    await doneText.count();
     
     // Verify page structure
     await expect(page).toHaveURL('/kanban');
