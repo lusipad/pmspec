@@ -31,7 +31,7 @@ test.describe('Features Page', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  test('should display feature items when data is available', async ({ page }) => {
+  test('should display feature items when data is available', async () => {
     await featuresPage.waitForPageLoad();
     
     // Check for feature rows/items

@@ -104,6 +104,7 @@ function GanttContent() {
   // Calculate dependency lines after render
   useEffect(() => {
     if (!showDependencies || !containerRef.current || tasks.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- This is intentional: we need to clear lines when dependencies are disabled
       setDependencyLines([]);
       return;
     }
@@ -139,6 +140,7 @@ function GanttContent() {
         }
       }
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- This is intentional: DOM-based calculations must happen after render
       setDependencyLines(lines);
     }, 100);
 
