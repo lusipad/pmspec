@@ -88,8 +88,8 @@ export function Import() {
       const result = await api.importFromSource(selectedSource, selectedFile, { dryRun: true });
       setPreviewResult(result);
       setStep('preview');
-    } catch (err: any) {
-      setError(err.message || 'Preview failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Preview failed');
     } finally {
       setIsLoading(false);
     }
@@ -108,8 +108,8 @@ export function Import() {
       });
       setImportResult(result);
       setStep('complete');
-    } catch (err: any) {
-      setError(err.message || 'Import failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setIsLoading(false);
     }
