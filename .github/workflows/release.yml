@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
+
       - name: Build CLI
         run: npm run build
 

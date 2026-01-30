@@ -13,7 +13,7 @@
 ### 方式 1: 通过 npm 安装 (推荐)
 
 ```bash
-npm install -g @pmspec/core
+npm install -g @lusipad/pmspec
 ```
 
 ### 方式 2: 从源码安装
@@ -431,13 +431,13 @@ pmspec analyze
 
 ```bash
 # 检查是否正确安装
-npm list -g @pmspec/core
+npm list -g @lusipad/pmspec
 
 # 重新安装
-npm install -g @pmspec/core
+npm install -g @lusipad/pmspec
 
 # 或使用 npx
-npx @pmspec/core init
+npx @lusipad/pmspec init
 ```
 
 ### 问题: 验证失败 - ID 重复
@@ -489,3 +489,4 @@ pmspec validate
 ---
 
 **开始你的 PMSpec 之旅吧!** 🚀
+

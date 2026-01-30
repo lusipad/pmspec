@@ -17,13 +17,13 @@ PMSpec 是一个轻量级的项目管理工具,受 [OpenSpec](https://github.com
 ## 📦 安装
 
 ```bash
-npm install -g @pmspec/core
+npm install -g @lusipad/pmspec
 ```
 
 或使用 npx(无需安装):
 
 ```bash
-npx @pmspec/core init
+npx @lusipad/pmspec init
 ```
 
 或者本地开发:
@@ -301,3 +301,4 @@ PMSpec 受到 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 的启发。感
 ---
 
 **Made with ❤️ for better project management**
+

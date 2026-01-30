@@ -1,19 +1,20 @@
 {
-  "name": "@pmspec/core",
+  "name": "@lusipad/pmspec",
   "version": "1.0.0",
-  "description": "简化的项目管理工具 - 只需维护一个功能表",
+  "description": "AI-driven project management with Markdown-based storage",
   "keywords": [
     "pmspec",
     "project-management",
     "simple",
     "csv",
     "markdown",
-    "ai"
+    "ai",
+    "cli"
   ],
-  "homepage": "https://github.com/pmspec/pmspec",
+  "homepage": "https://github.com/lusipad/pmspec",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pmspec/pmspec"
+    "url": "https://github.com/lusipad/pmspec"
   },
   "license": "MIT",
   "author": "PMSpec Contributors",

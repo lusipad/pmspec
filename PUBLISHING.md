@@ -1,10 +1,10 @@
 # Publishing Guide
 
-This guide explains how to publish `@pmspec/core` to npm registry.
+This guide explains how to publish `@lusipad/pmspec` to npm registry.
 
 ## Prerequisites
 
-1. **NPM Account**: You need an npm account with publishing permissions for the `@pmspec` scope
+1. **NPM Account**: You need an npm account with publishing permissions for the `@lusipad` scope
 2. **NPM Token**: Generate an automation token from npm:
    - Go to https://www.npmjs.com/settings/YOUR_USERNAME/tokens
    - Click "Generate New Token"
@@ -68,10 +68,10 @@ After the workflow completes:
 
 ```bash
 # Check the package on npm
-npm view @pmspec/core
+npm view @lusipad/pmspec
 
 # Test installation
-npx @pmspec/core@latest init
+npx @lusipad/pmspec@latest init
 ```
 
 ## Manual Publishing (Not Recommended)
@@ -95,11 +95,11 @@ Once published, users can install and use the package:
 
 ```bash
 # Global installation
-npm install -g @pmspec/core
+npm install -g @lusipad/pmspec
 pmspec init
 
 # Using npx (no installation required)
-npx @pmspec/core init
+npx @lusipad/pmspec init
 ```
 
 ## Troubleshooting
@@ -112,13 +112,13 @@ npx @pmspec/core init
 
 ### Error: "You do not have permission to publish"
 
-- Verify you are a member of the `@pmspec` npm organization
+- Verify you are a member of the `@lusipad` npm organization
 - Contact the organization owner to grant publishing permissions
 
 ### Error: "Version already exists"
 
 - The version in `package.json` must be bumped before each publish
-- Check existing versions: `npm view @pmspec/core versions`
+- Check existing versions: `npm view @lusipad/pmspec versions`
 
 ## Version Strategy
 
@@ -144,5 +144,6 @@ git push origin main --tags
 Users can then install the pre-release:
 
 ```bash
-npx @pmspec/core@beta init
+npx @lusipad/pmspec@beta init
 ```
+
