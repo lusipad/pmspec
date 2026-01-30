@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { getFeatures, getEpics } from '../services/dataService';
 import {
@@ -7,6 +7,10 @@ import {
   writeFeatureFile,
   getCSVTemplate,
 } from '../services/csvService';
+import { createLogger } from '../utils/logger';
+import { ValidationError, InternalServerError } from '../utils/errors';
+
+const logger = createLogger('csv');
 
 export const csvRoutes = Router();
 
@@ -18,8 +22,30 @@ const upload = multer({
   },
 });
 
+/**
+ * @openapi
+ * /api/csv/export:
+ *   get:
+ *     summary: Export features to CSV
+ *     description: Download all features as a CSV file
+ *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: CSV file download
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /api/csv/export - Export features to CSV
-csvRoutes.get('/export', async (req: Request, res: Response) => {
+csvRoutes.get('/export', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const features = await getFeatures();
     const csv = featuresToCSV(features);
@@ -31,13 +57,34 @@ csvRoutes.get('/export', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (error) {
-    console.error('Error exporting CSV:', error);
-    res.status(500).json({ error: 'Failed to export CSV' });
+    next(new InternalServerError({ detail: 'Failed to export CSV', instance: req.originalUrl }));
   }
 });
 
+/**
+ * @openapi
+ * /api/csv/template:
+ *   get:
+ *     summary: Download CSV template
+ *     description: Download a blank CSV template for feature import
+ *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: CSV template file download
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /api/csv/template - Download CSV template
-csvRoutes.get('/template', async (req: Request, res: Response) => {
+csvRoutes.get('/template', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const template = getCSVTemplate();
 
@@ -45,27 +92,65 @@ csvRoutes.get('/template', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', 'attachment; filename="pmspec-template.csv"');
     res.send(template);
   } catch (error) {
-    console.error('Error generating template:', error);
-    res.status(500).json({ error: 'Failed to generate template' });
+    next(new InternalServerError({ detail: 'Failed to generate template', instance: req.originalUrl }));
   }
 });
 
+/**
+ * @openapi
+ * /api/csv/import:
+ *   post:
+ *     summary: Import features from CSV
+ *     description: Upload a CSV file to import or update features
+ *     tags: [CSV]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV file to import
+ *             required:
+ *               - file
+ *     responses:
+ *       200:
+ *         description: Import successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CSVImportResult'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationError'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /api/csv/import - Import features from CSV
-csvRoutes.post('/import', upload.single('file'), async (req: Request, res: Response) => {
+csvRoutes.post('/import', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      throw new ValidationError({ detail: 'No file uploaded', instance: req.originalUrl });
     }
 
     const csvContent = req.file.buffer.toString('utf-8');
     const { features, errors } = csvToFeatures(csvContent);
 
     if (errors.length > 0) {
-      return res.status(400).json({
-        error: 'Validation errors in CSV',
-        errors,
-        created: 0,
-        updated: 0,
+      throw new ValidationError({
+        detail: 'Validation errors in CSV',
+        instance: req.originalUrl,
+        errors: errors.map((e) => ({ field: e.field, message: `Row ${e.row}: ${e.message}` })),
       });
     }
 
@@ -77,21 +162,19 @@ csvRoutes.post('/import', upload.single('file'), async (req: Request, res: Respo
       .map((f, i) => {
         if (!epicIds.has(f.epic)) {
           return {
-            row: i + 2,
             field: 'Epic',
-            message: `Epic ${f.epic} not found. Available: ${Array.from(epicIds).join(', ')}`,
+            message: `Row ${i + 2}: Epic ${f.epic} not found. Available: ${Array.from(epicIds).join(', ')}`,
           };
         }
         return null;
       })
-      .filter(Boolean);
+      .filter((e): e is { field: string; message: string } => e !== null);
 
     if (epicErrors.length > 0) {
-      return res.status(400).json({
-        error: 'Invalid Epic references',
+      throw new ValidationError({
+        detail: 'Invalid Epic references',
+        instance: req.originalUrl,
         errors: epicErrors,
-        created: 0,
-        updated: 0,
       });
     }
 
@@ -100,17 +183,10 @@ csvRoutes.post('/import', upload.single('file'), async (req: Request, res: Respo
     const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 
     if (duplicates.length > 0) {
-      return res.status(400).json({
-        error: 'Duplicate IDs found in CSV',
-        errors: [
-          {
-            row: 0,
-            field: 'ID',
-            message: `Duplicate IDs: ${[...new Set(duplicates)].join(', ')}`,
-          },
-        ],
-        created: 0,
-        updated: 0,
+      throw new ValidationError({
+        detail: 'Duplicate IDs found in CSV',
+        instance: req.originalUrl,
+        errors: [{ field: 'ID', message: `Duplicate IDs: ${[...new Set(duplicates)].join(', ')}` }],
       });
     }
 
@@ -139,7 +215,9 @@ csvRoutes.post('/import', upload.single('file'), async (req: Request, res: Respo
       errors: [],
     });
   } catch (error) {
-    console.error('Error importing CSV:', error);
-    res.status(500).json({ error: 'Failed to import CSV' });
+    if (error instanceof ValidationError) {
+      return next(error);
+    }
+    next(new InternalServerError({ detail: 'Failed to import CSV', instance: req.originalUrl }));
   }
 });

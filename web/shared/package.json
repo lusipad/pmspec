@@ -1,11 +1,19 @@
 {
-  "name": "@pmspec/shared",
+  "name": "@pmspec/types",
   "version": "1.0.0",
-  "description": "Shared types between frontend and backend",
-  "main": "index.ts",
-  "types": "index.ts",
-  "scripts": {},
-  "keywords": [],
-  "author": "",
-  "license": "MIT"
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

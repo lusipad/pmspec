@@ -1,4 +1,4 @@
-import type { Priority, WorkloadSize } from '../../../shared/types';
+import type { Priority, WorkloadSize } from '@pmspec/types';
 
 /**
  * Get color code for a priority level

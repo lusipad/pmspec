@@ -1,32 +1,94 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getEpics, getEpicById } from '../services/dataService';
+import { createLogger } from '../utils/logger';
+import { NotFoundError, InternalServerError } from '../utils/errors';
+
+const logger = createLogger('epics');
 
 export const epicRoutes = Router();
 
+/**
+ * @openapi
+ * /api/epics:
+ *   get:
+ *     summary: List all epics
+ *     description: Retrieve a list of all epics in the project
+ *     tags: [Epics]
+ *     responses:
+ *       200:
+ *         description: List of epics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Epic'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /api/epics - List all epics
-epicRoutes.get('/', async (req: Request, res: Response) => {
+epicRoutes.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const epics = await getEpics();
     res.json(epics);
   } catch (error) {
-    console.error('Error fetching epics:', error);
-    res.status(500).json({ error: 'Failed to fetch epics' });
+    next(new InternalServerError({ detail: 'Failed to fetch epics', instance: req.originalUrl }));
   }
 });
 
-// GET /api/epics/:id - Get specific epic
-epicRoutes.get('/:id', async (req: Request, res: Response) => {
+/**
+ * @openapi
+ * /api/epics/{id}:
+ *   get:
+ *     summary: Get a specific epic
+ *     description: Retrieve details of a specific epic by its ID
+ *     tags: [Epics]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Epic ID
+ *         example: EPIC-001
+ *     responses:
+ *       200:
+ *         description: Epic details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Epic'
+ *       404:
+ *         description: Epic not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+epicRoutes.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const epic = await getEpicById(id);
 
     if (!epic) {
-      return res.status(404).json({ error: `Epic ${id} not found` });
+      throw new NotFoundError({ detail: `Epic ${id} not found`, instance: req.originalUrl });
     }
 
     res.json(epic);
   } catch (error) {
-    console.error('Error fetching epic:', error);
-    res.status(500).json({ error: 'Failed to fetch epic' });
+    if (error instanceof NotFoundError) {
+      return next(error);
+    }
+    next(new InternalServerError({ detail: 'Failed to fetch epic', instance: req.originalUrl }));
   }
 });

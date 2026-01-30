@@ -4,6 +4,9 @@ import { z } from 'zod';
 export const EpicStatus = z.enum(['planning', 'in-progress', 'completed']);
 export type EpicStatus = z.infer<typeof EpicStatus>;
 
+export const MilestoneStatus = z.enum(['upcoming', 'active', 'completed', 'missed']);
+export type MilestoneStatus = z.infer<typeof MilestoneStatus>;
+
 export const FeatureStatus = z.enum(['todo', 'in-progress', 'done']);
 export type FeatureStatus = z.infer<typeof FeatureStatus>;
 
@@ -22,6 +25,18 @@ export const UserStorySchema = z.object({
 
 export type UserStory = z.infer<typeof UserStorySchema>;
 
+// Dependency type enum
+export const DependencyType = z.enum(['blocks', 'relates-to']);
+export type DependencyType = z.infer<typeof DependencyType>;
+
+// Dependency schema
+export const DependencySchema = z.object({
+  featureId: z.string().regex(/^FEAT-\d+$/),
+  type: DependencyType,
+});
+
+export type Dependency = z.infer<typeof DependencySchema>;
+
 // Feature schema
 export const FeatureSchema = z.object({
   id: z.string().regex(/^FEAT-\d+$/),
@@ -35,6 +50,7 @@ export const FeatureSchema = z.object({
   description: z.string().optional(),
   userStories: z.array(UserStorySchema).default([]),
   acceptanceCriteria: z.array(z.string()).default([]),
+  dependencies: z.array(DependencySchema).default([]),
 });
 
 export type Feature = z.infer<typeof FeatureSchema>;
@@ -52,6 +68,18 @@ export const EpicSchema = z.object({
 });
 
 export type Epic = z.infer<typeof EpicSchema>;
+
+// Milestone schema
+export const MilestoneSchema = z.object({
+  id: z.string().regex(/^MILE-\d{3}$/),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  targetDate: z.string(), // ISO date YYYY-MM-DD
+  status: MilestoneStatus,
+  features: z.array(z.string().regex(/^FEAT-\d+$/)).default([]), // Feature IDs
+});
+
+export type Milestone = z.infer<typeof MilestoneSchema>;
 
 // Project schema
 export const ProjectSchema = z.object({
@@ -85,7 +113,7 @@ export function parseIdNumber(id: string): number {
  * Generate next available ID based on existing IDs
  * @example generateNextId('EPIC', ['EPIC-001', 'EPIC-003']) => 'EPIC-004'
  */
-export function generateNextId(prefix: 'EPIC' | 'FEAT' | 'STORY', existingIds: string[]): string {
+export function generateNextId(prefix: 'EPIC' | 'FEAT' | 'STORY' | 'MILE', existingIds: string[]): string {
   if (existingIds.length === 0) {
     return `${prefix}-001`;
   }

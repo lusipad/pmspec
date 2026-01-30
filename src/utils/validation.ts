@@ -14,6 +14,83 @@ export interface ValidationResult {
 }
 
 /**
+ * Check that all feature dependencies reference existing features
+ */
+export function validateDependencies(
+  features: Feature[]
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const featureIds = new Set(features.map(f => f.id));
+
+  for (const feature of features) {
+    if (!feature.dependencies) continue;
+    
+    for (const dep of feature.dependencies) {
+      if (!featureIds.has(dep.featureId)) {
+        errors.push(`Feature ${feature.id} has dependency on non-existent Feature ${dep.featureId}`);
+      }
+      if (dep.featureId === feature.id) {
+        errors.push(`Feature ${feature.id} has a self-referencing dependency`);
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Detect circular dependencies among features
+ * Uses depth-first search to find cycles
+ */
+export function detectCircularDependencies(
+  features: Feature[]
+): { hasCycle: boolean; cycles: string[][] } {
+  const featureMap = new Map(features.map(f => [f.id, f]));
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+  const cycles: string[][] = [];
+
+  function dfs(featureId: string, path: string[]): boolean {
+    if (recursionStack.has(featureId)) {
+      // Found a cycle
+      const cycleStart = path.indexOf(featureId);
+      const cycle = [...path.slice(cycleStart), featureId];
+      cycles.push(cycle);
+      return true;
+    }
+
+    if (visited.has(featureId)) {
+      return false;
+    }
+
+    visited.add(featureId);
+    recursionStack.add(featureId);
+
+    const feature = featureMap.get(featureId);
+    if (feature?.dependencies) {
+      // Only check 'blocks' dependencies for cycles (relates-to is informational)
+      const blockingDeps = feature.dependencies.filter(d => d.type === 'blocks');
+      for (const dep of blockingDeps) {
+        if (featureMap.has(dep.featureId)) {
+          dfs(dep.featureId, [...path, featureId]);
+        }
+      }
+    }
+
+    recursionStack.delete(featureId);
+    return false;
+  }
+
+  for (const feature of features) {
+    if (!visited.has(feature.id)) {
+      dfs(feature.id, []);
+    }
+  }
+
+  return { hasCycle: cycles.length > 0, cycles };
+}
+
+/**
  * Validate entire project structure
  */
 export function validateProject(
@@ -92,6 +169,25 @@ export function validateProject(
           location: feature.id,
         });
       }
+    }
+  }
+
+  // Validate feature dependencies
+  const depCheck = validateDependencies(features);
+  if (!depCheck.valid) {
+    depCheck.errors.forEach(err => {
+      issues.push({ level: 'ERROR', message: err });
+    });
+  }
+
+  // Check for circular dependencies
+  const cycleCheck = detectCircularDependencies(features);
+  if (cycleCheck.hasCycle) {
+    for (const cycle of cycleCheck.cycles) {
+      issues.push({
+        level: 'ERROR',
+        message: `Circular dependency detected: ${cycle.join(' → ')}`,
+      });
     }
   }
 

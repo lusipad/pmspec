@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 import {
   BarChart,
   Bar,
@@ -33,6 +34,16 @@ interface OverviewStats {
       completed: number;
     };
   };
+  hours: {
+    estimated: number;
+    actual: number;
+    completionRate: number;
+  };
+  team: {
+    total: number;
+    averageUtilization: number;
+    assignedMembers: number;
+  };
   totalEstimate: number;
   totalActual: number;
 }
@@ -64,7 +75,10 @@ interface EpicProgressItem {
   title: string;
   status: string;
   featureCount: number;
+  totalFeatures: number;
+  completedFeatures: number;
   progress: number;
+  progressPercent: number;
   hoursProgress: number;
 }
 
@@ -75,6 +89,11 @@ interface EpicProgressResponse {
 interface PieLabelProps {
   name: string;
   percent: number;
+  cx: number;
+  cy: number;
+  midAngle: number;
+  innerRadius: number;
+  outerRadius: number;
 }
 
 const COLORS = {
@@ -86,24 +105,32 @@ const COLORS = {
 };
 
 export function Dashboard() {
+  return (
+    <QueryErrorBoundary>
+      <DashboardContent />
+    </QueryErrorBoundary>
+  );
+}
+
+function DashboardContent() {
   const { data: overview, isLoading: overviewLoading } = useQuery<OverviewStats>({
     queryKey: ['stats', 'overview'],
-    queryFn: () => api.getOverviewStats(),
+    queryFn: () => api.getOverviewStats<OverviewStats>(),
   });
 
   const { data: trends, isLoading: trendsLoading } = useQuery<TrendsResponse>({
     queryKey: ['stats', 'trends'],
-    queryFn: () => api.getTrends(),
+    queryFn: () => api.getTrends<TrendsResponse>(),
   });
 
   const { data: teamWorkload, isLoading: teamLoading } = useQuery<TeamWorkloadResponse>({
     queryKey: ['stats', 'team-workload'],
-    queryFn: () => api.getTeamWorkload(),
+    queryFn: () => api.getTeamWorkload<TeamWorkloadResponse>(),
   });
 
   const { data: epicProgress, isLoading: epicLoading } = useQuery<EpicProgressResponse>({
     queryKey: ['stats', 'epic-progress'],
-    queryFn: () => api.getEpicProgress(),
+    queryFn: () => api.getEpicProgress<EpicProgressResponse>(),
   });
 
   if (overviewLoading) {
@@ -258,7 +285,7 @@ export function Dashboard() {
           </div>
           <div className="mt-4 flex items-center text-sm">
             <span className="text-orange-600 font-medium">
-              {stats?.team.totalMembers || 0} 成员
+              {stats?.team.total || 0} 成员
             </span>
           </div>
         </div>
@@ -276,7 +303,7 @@ export function Dashboard() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, percent }: PieLabelProps) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} ${percent ? (percent * 100).toFixed(0) : '0'}%`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"

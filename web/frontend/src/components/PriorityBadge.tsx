@@ -1,14 +1,31 @@
-import type { Priority } from '../../../shared/types';
+import type { Priority } from '@pmspec/types';
 import { getPriorityColor, getPriorityLabel } from '../utils/visualHelpers';
 
 interface PriorityBadgeProps {
-  priority?: Priority;
+  priority?: Priority | string;
   size?: 'small' | 'medium' | 'large';
 }
 
+// Map P0/P1/P2/P3 format to Priority
+function normalizePriority(p: Priority | string | undefined): Priority {
+  if (!p) return 'medium';
+  const mapping: Record<string, Priority> = {
+    'P0': 'critical',
+    'P1': 'high',
+    'P2': 'medium',
+    'P3': 'low',
+    'critical': 'critical',
+    'high': 'high',
+    'medium': 'medium',
+    'low': 'low',
+  };
+  return mapping[p] || 'medium';
+}
+
 export function PriorityBadge({ priority = 'medium', size = 'medium' }: PriorityBadgeProps) {
-  const colors = getPriorityColor(priority);
-  const label = getPriorityLabel(priority);
+  const normalized = normalizePriority(priority);
+  const colors = getPriorityColor(normalized);
+  const label = getPriorityLabel(normalized);
 
   const sizeClasses = {
     small: 'px-1.5 py-0.5 text-xs',

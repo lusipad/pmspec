@@ -1,4 +1,4 @@
-import type { Epic, Feature } from '../../../shared/types';
+import type { Epic, Feature } from '@pmspec/types';
 
 export interface GanttTask {
   id: string;

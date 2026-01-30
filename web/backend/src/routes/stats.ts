@@ -1,13 +1,34 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getEpics, getFeatures, getTeam } from '../services/dataService.js';
+import { createLogger } from '../utils/logger.js';
+import { InternalServerError } from '../utils/errors.js';
+
+const logger = createLogger('stats');
 
 const router = Router();
 
 /**
- * GET /api/stats/overview
- * Get project overview statistics
+ * @openapi
+ * /api/stats/overview:
+ *   get:
+ *     summary: Get project overview statistics
+ *     description: Retrieve comprehensive statistics about features, hours, epics, and team
+ *     tags: [Stats]
+ *     responses:
+ *       200:
+ *         description: Project overview statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OverviewStats'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/overview', async (req, res) => {
+router.get('/overview', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const [epics, features, team] = await Promise.all([
       getEpics(),
@@ -80,16 +101,32 @@ router.get('/overview', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error getting overview stats:', error);
-    res.status(500).json({ error: 'Failed to get overview statistics' });
+    next(new InternalServerError({ detail: 'Failed to get overview statistics', instance: req.originalUrl }));
   }
 });
 
 /**
- * GET /api/stats/trends
- * Get trend data for charts (placeholder - needs historical data)
+ * @openapi
+ * /api/stats/trends:
+ *   get:
+ *     summary: Get trend data for charts
+ *     description: Retrieve trend data showing feature progress over time
+ *     tags: [Stats]
+ *     responses:
+ *       200:
+ *         description: Trend data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TrendData'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/trends', async (req, res) => {
+router.get('/trends', async (req: Request, res: Response, next: NextFunction) => {
   try {
     // Placeholder for trend data
     // In a real implementation, this would query historical data
@@ -119,16 +156,32 @@ router.get('/trends', async (req, res) => {
 
     res.json({ trends });
   } catch (error) {
-    console.error('Error getting trends:', error);
-    res.status(500).json({ error: 'Failed to get trend data' });
+    next(new InternalServerError({ detail: 'Failed to get trend data', instance: req.originalUrl }));
   }
 });
 
 /**
- * GET /api/stats/team-workload
- * Get team member workload distribution
+ * @openapi
+ * /api/stats/team-workload:
+ *   get:
+ *     summary: Get team member workload distribution
+ *     description: Retrieve workload statistics for each team member
+ *     tags: [Stats]
+ *     responses:
+ *       200:
+ *         description: Team workload data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TeamWorkload'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/team-workload', async (req, res) => {
+router.get('/team-workload', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const [features, team] = await Promise.all([getFeatures(), getTeam()]);
 
@@ -161,16 +214,32 @@ router.get('/team-workload', async (req, res) => {
 
     res.json({ workload: workloadByMember });
   } catch (error) {
-    console.error('Error getting team workload:', error);
-    res.status(500).json({ error: 'Failed to get team workload data' });
+    next(new InternalServerError({ detail: 'Failed to get team workload data', instance: req.originalUrl }));
   }
 });
 
 /**
- * GET /api/stats/epic-progress
- * Get progress for each epic
+ * @openapi
+ * /api/stats/epic-progress:
+ *   get:
+ *     summary: Get progress for each epic
+ *     description: Retrieve progress statistics for all epics
+ *     tags: [Stats]
+ *     responses:
+ *       200:
+ *         description: Epic progress data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EpicProgress'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/epic-progress', async (req, res) => {
+router.get('/epic-progress', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const [epics, features] = await Promise.all([getEpics(), getFeatures()]);
 
@@ -211,8 +280,7 @@ router.get('/epic-progress', async (req, res) => {
 
     res.json({ epics: epicProgress });
   } catch (error) {
-    console.error('Error getting epic progress:', error);
-    res.status(500).json({ error: 'Failed to get epic progress data' });
+    next(new InternalServerError({ detail: 'Failed to get epic progress data', instance: req.originalUrl }));
   }
 });
 

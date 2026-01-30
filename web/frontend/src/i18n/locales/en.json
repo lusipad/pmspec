@@ -1,0 +1,154 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "refresh": "Refresh",
+    "back": "Back",
+    "close": "Close",
+    "confirm": "Confirm",
+    "noData": "No data",
+    "actions": "Actions"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "kanban": "Kanban",
+    "gantt": "Gantt",
+    "features": "Features",
+    "epics": "Epics",
+    "milestones": "Milestones",
+    "aiAssistant": "AI Assistant",
+    "import": "Import"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "toggle": "Toggle theme"
+  },
+  "language": {
+    "en": "English",
+    "zh": "中文",
+    "select": "Language"
+  },
+  "dashboard": {
+    "title": "Project Overview",
+    "totalEpics": "Total Epics",
+    "totalFeatures": "Total Features",
+    "totalStories": "Total Stories",
+    "recentActivity": "Recent Activity",
+    "statusDistribution": "Status Distribution",
+    "priorityDistribution": "Priority Distribution"
+  },
+  "features": {
+    "title": "Features",
+    "addFeature": "Add Feature",
+    "editFeature": "Edit Feature",
+    "deleteFeature": "Delete Feature",
+    "featureId": "Feature ID",
+    "featureName": "Name",
+    "description": "Description",
+    "status": "Status",
+    "priority": "Priority",
+    "epic": "Epic",
+    "dependencies": "Dependencies",
+    "stories": "Stories",
+    "noFeatures": "No features found"
+  },
+  "epics": {
+    "title": "Epics",
+    "addEpic": "Add Epic",
+    "editEpic": "Edit Epic",
+    "deleteEpic": "Delete Epic",
+    "epicId": "Epic ID",
+    "epicName": "Name",
+    "description": "Description",
+    "features": "Features",
+    "progress": "Progress",
+    "noEpics": "No epics found"
+  },
+  "milestones": {
+    "title": "Milestones",
+    "addMilestone": "Add Milestone",
+    "editMilestone": "Edit Milestone",
+    "deleteMilestone": "Delete Milestone",
+    "milestoneId": "Milestone ID",
+    "milestoneName": "Name",
+    "dueDate": "Due Date",
+    "features": "Features",
+    "progress": "Progress",
+    "noMilestones": "No milestones found"
+  },
+  "kanban": {
+    "title": "Kanban Board",
+    "backlog": "Backlog",
+    "todo": "To Do",
+    "inProgress": "In Progress",
+    "review": "Review",
+    "done": "Done"
+  },
+  "gantt": {
+    "title": "Gantt Chart",
+    "timeline": "Timeline",
+    "today": "Today",
+    "week": "Week",
+    "month": "Month",
+    "quarter": "Quarter"
+  },
+  "ai": {
+    "title": "AI Assistant",
+    "placeholder": "Ask AI about your project...",
+    "send": "Send",
+    "suggestions": "Suggestions",
+    "analyzing": "Analyzing..."
+  },
+  "import": {
+    "title": "Import",
+    "source": "Source",
+    "jira": "Jira",
+    "linear": "Linear",
+    "github": "GitHub Issues",
+    "selectSource": "Select source",
+    "apiKey": "API Key",
+    "projectId": "Project ID",
+    "import": "Import",
+    "importing": "Importing...",
+    "success": "Import successful",
+    "failed": "Import failed"
+  },
+  "status": {
+    "draft": "Draft",
+    "proposed": "Proposed",
+    "approved": "Approved",
+    "in-progress": "In Progress",
+    "completed": "Completed",
+    "rejected": "Rejected",
+    "deferred": "Deferred"
+  },
+  "priority": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "connection": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "reconnecting": "Reconnecting..."
+  },
+  "errors": {
+    "loadFailed": "Failed to load data",
+    "saveFailed": "Failed to save",
+    "deleteFailed": "Failed to delete",
+    "networkError": "Network error",
+    "unauthorized": "Unauthorized",
+    "notFound": "Not found",
+    "serverError": "Server error"
+  }
+}

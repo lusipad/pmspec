@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import type { Feature } from '../../../shared/types';
+import type { Feature } from '@pmspec/types';
 import { writeFile, readFile } from 'fs/promises';
 import path from 'path';
 

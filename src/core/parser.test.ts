@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseEpic, parseFeature, parseProject, parseTeam, parseMetadata } from './parser.js';
+import { parseEpic, parseFeature, parseProject, parseTeam, parseMetadata, parseMilestone } from './parser.js';
 
 describe('parseMetadata', () => {
   it('should parse metadata fields', () => {
@@ -186,5 +186,66 @@ describe('parseTeam', () => {
 
     const team = parseTeam(content);
     expect(team.members[0].currentLoad).toBe(0);
+  });
+});
+
+describe('parseMilestone', () => {
+  it('should parse Milestone from markdown', () => {
+    const content = `# Milestone: Q1 Release
+
+- **ID**: MILE-001
+- **Target Date**: 2024-03-31
+- **Status**: active
+
+## Description
+First quarter release milestone.
+
+## Features
+- [ ] FEAT-001
+- [ ] FEAT-002
+- [x] FEAT-003
+`;
+
+    const milestone = parseMilestone(content);
+    expect(milestone.id).toBe('MILE-001');
+    expect(milestone.title).toBe('Q1 Release');
+    expect(milestone.targetDate).toBe('2024-03-31');
+    expect(milestone.status).toBe('active');
+    expect(milestone.description).toContain('First quarter release milestone');
+    expect(milestone.features).toEqual(['FEAT-001', 'FEAT-002', 'FEAT-003']);
+  });
+
+  it('should handle Milestone without features', () => {
+    const content = `# Milestone: Empty Milestone
+
+- **ID**: MILE-001
+- **Target Date**: 2024-06-30
+- **Status**: upcoming
+
+## Description
+A milestone with no features yet.
+`;
+
+    const milestone = parseMilestone(content);
+    expect(milestone.id).toBe('MILE-001');
+    expect(milestone.features).toEqual([]);
+  });
+
+  it('should handle Milestone without description', () => {
+    const content = `# Milestone: Simple Milestone
+
+- **ID**: MILE-002
+- **Target Date**: 2024-12-31
+- **Status**: completed
+
+## Features
+- [x] FEAT-001
+`;
+
+    const milestone = parseMilestone(content);
+    expect(milestone.id).toBe('MILE-002');
+    expect(milestone.status).toBe('completed');
+    expect(milestone.description).toBeUndefined();
+    expect(milestone.features).toEqual(['FEAT-001']);
   });
 });

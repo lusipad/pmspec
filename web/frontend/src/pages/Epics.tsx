@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 
 interface Epic {
   id: string;
@@ -12,6 +13,14 @@ interface Epic {
 }
 
 export function Epics() {
+  return (
+    <QueryErrorBoundary>
+      <EpicsContent />
+    </QueryErrorBoundary>
+  );
+}
+
+function EpicsContent() {
   const { data: epics, isLoading, error } = useQuery<Epic[]>({
     queryKey: ['epics'],
     queryFn: () => api.getEpics<Epic[]>(),

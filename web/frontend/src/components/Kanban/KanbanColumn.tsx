@@ -1,17 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { FeatureCard } from './FeatureCard';
-
-interface Feature {
-  id: string;
-  epic: string;
-  title: string;
-  status: string;
-  assignee: string;
-  estimate: number;
-  actual: number;
-  skillsRequired: string[];
-}
+import type { Feature } from '@pmspec/types';
 
 interface KanbanColumnProps {
   title: string;

@@ -1,0 +1,154 @@
+{
+  "common": {
+    "loading": "加载中...",
+    "error": "错误",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "search": "搜索",
+    "filter": "筛选",
+    "refresh": "刷新",
+    "back": "返回",
+    "close": "关闭",
+    "confirm": "确认",
+    "noData": "暂无数据",
+    "actions": "操作"
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "kanban": "看板",
+    "gantt": "甘特图",
+    "features": "功能",
+    "epics": "史诗",
+    "milestones": "里程碑",
+    "aiAssistant": "AI 助手",
+    "import": "导入"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "toggle": "切换主题"
+  },
+  "language": {
+    "en": "English",
+    "zh": "中文",
+    "select": "语言"
+  },
+  "dashboard": {
+    "title": "项目概览",
+    "totalEpics": "史诗总数",
+    "totalFeatures": "功能总数",
+    "totalStories": "故事总数",
+    "recentActivity": "最近活动",
+    "statusDistribution": "状态分布",
+    "priorityDistribution": "优先级分布"
+  },
+  "features": {
+    "title": "功能",
+    "addFeature": "添加功能",
+    "editFeature": "编辑功能",
+    "deleteFeature": "删除功能",
+    "featureId": "功能 ID",
+    "featureName": "名称",
+    "description": "描述",
+    "status": "状态",
+    "priority": "优先级",
+    "epic": "所属史诗",
+    "dependencies": "依赖",
+    "stories": "故事",
+    "noFeatures": "暂无功能"
+  },
+  "epics": {
+    "title": "史诗",
+    "addEpic": "添加史诗",
+    "editEpic": "编辑史诗",
+    "deleteEpic": "删除史诗",
+    "epicId": "史诗 ID",
+    "epicName": "名称",
+    "description": "描述",
+    "features": "功能",
+    "progress": "进度",
+    "noEpics": "暂无史诗"
+  },
+  "milestones": {
+    "title": "里程碑",
+    "addMilestone": "添加里程碑",
+    "editMilestone": "编辑里程碑",
+    "deleteMilestone": "删除里程碑",
+    "milestoneId": "里程碑 ID",
+    "milestoneName": "名称",
+    "dueDate": "截止日期",
+    "features": "功能",
+    "progress": "进度",
+    "noMilestones": "暂无里程碑"
+  },
+  "kanban": {
+    "title": "看板",
+    "backlog": "待办",
+    "todo": "计划中",
+    "inProgress": "进行中",
+    "review": "评审中",
+    "done": "已完成"
+  },
+  "gantt": {
+    "title": "甘特图",
+    "timeline": "时间线",
+    "today": "今天",
+    "week": "周",
+    "month": "月",
+    "quarter": "季度"
+  },
+  "ai": {
+    "title": "AI 助手",
+    "placeholder": "向 AI 询问项目相关问题...",
+    "send": "发送",
+    "suggestions": "建议",
+    "analyzing": "分析中..."
+  },
+  "import": {
+    "title": "导入",
+    "source": "来源",
+    "jira": "Jira",
+    "linear": "Linear",
+    "github": "GitHub Issues",
+    "selectSource": "选择来源",
+    "apiKey": "API 密钥",
+    "projectId": "项目 ID",
+    "import": "导入",
+    "importing": "导入中...",
+    "success": "导入成功",
+    "failed": "导入失败"
+  },
+  "status": {
+    "draft": "草稿",
+    "proposed": "已提议",
+    "approved": "已批准",
+    "in-progress": "进行中",
+    "completed": "已完成",
+    "rejected": "已拒绝",
+    "deferred": "已延期"
+  },
+  "priority": {
+    "critical": "紧急",
+    "high": "高",
+    "medium": "中",
+    "low": "低"
+  },
+  "connection": {
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "reconnecting": "重连中..."
+  },
+  "errors": {
+    "loadFailed": "加载失败",
+    "saveFailed": "保存失败",
+    "deleteFailed": "删除失败",
+    "networkError": "网络错误",
+    "unauthorized": "未授权",
+    "notFound": "未找到",
+    "serverError": "服务器错误"
+  }
+}

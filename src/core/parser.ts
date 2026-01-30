@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import type { Epic, Feature, UserStory, Project } from './project.js';
+import type { Epic, Feature, UserStory, Project, Milestone, Dependency } from './project.js';
 import type { Team, TeamMember } from './team.js';
 
 /**
@@ -108,6 +108,26 @@ export function parseFeature(content: string): Feature {
   const skillsStr = metadata['Skills Required'] || '';
   const skillsRequired = skillsStr ? skillsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
 
+  // Parse Dependencies
+  const depsSection = content.match(/## Dependencies\n([\s\S]*?)(?=\n##|$)/);
+  const dependencies: Dependency[] = [];
+
+  if (depsSection) {
+    // Parse blocks: FEAT-002, FEAT-003
+    const blocksMatch = depsSection[1].match(/-\s+blocks:\s+(.+)/i);
+    if (blocksMatch) {
+      const blockIds = blocksMatch[1].split(',').map(s => s.trim()).filter(s => /^FEAT-\d+$/.test(s));
+      blockIds.forEach(id => dependencies.push({ featureId: id, type: 'blocks' }));
+    }
+
+    // Parse relates-to: FEAT-005
+    const relatesToMatch = depsSection[1].match(/-\s+relates-to:\s+(.+)/i);
+    if (relatesToMatch) {
+      const relatedIds = relatesToMatch[1].split(',').map(s => s.trim()).filter(s => /^FEAT-\d+$/.test(s));
+      relatedIds.forEach(id => dependencies.push({ featureId: id, type: 'relates-to' }));
+    }
+  }
+
   return {
     id: metadata['ID'],
     title,
@@ -120,6 +140,7 @@ export function parseFeature(content: string): Feature {
     description,
     userStories,
     acceptanceCriteria,
+    dependencies,
   };
 }
 
@@ -195,6 +216,42 @@ export function parseTeam(content: string): Team {
 }
 
 /**
+ * Parse Milestone from markdown file content
+ */
+export function parseMilestone(content: string): Milestone {
+  const metadata = parseMetadata(content);
+
+  // Parse title from header
+  const titleMatch = content.match(/^#\s+Milestone:\s+(.+)$/m);
+  const title = titleMatch ? titleMatch[1].trim() : metadata['Title'] || 'Untitled';
+
+  // Parse Description
+  const descSection = content.match(/## Description\n([\s\S]*?)(?=\n##|$)/);
+  const description = descSection ? descSection[1].trim() : undefined;
+
+  // Parse Features list (with checkboxes)
+  const featuresSection = content.match(/## Features\n([\s\S]*?)(?=\n##|$)/);
+  const features: string[] = [];
+
+  if (featuresSection) {
+    const featureRegex = /-\s+\[[x ]\]\s+(FEAT-\d+)/g;
+    let match;
+    while ((match = featureRegex.exec(featuresSection[1])) !== null) {
+      features.push(match[1]);
+    }
+  }
+
+  return {
+    id: metadata['ID'],
+    title,
+    description,
+    targetDate: metadata['Target Date'],
+    status: metadata['Status'] as any,
+    features,
+  };
+}
+
+/**
  * Read and parse Epic file
  */
 export async function readEpicFile(filePath: string): Promise<Epic> {
@@ -224,4 +281,12 @@ export async function readProjectFile(filePath: string): Promise<Project> {
 export async function readTeamFile(filePath: string): Promise<Team> {
   const content = await readFile(filePath, 'utf-8');
   return parseTeam(content);
+}
+
+/**
+ * Read and parse Milestone file
+ */
+export async function readMilestoneFile(filePath: string): Promise<Milestone> {
+  const content = await readFile(filePath, 'utf-8');
+  return parseMilestone(content);
 }

@@ -2,11 +2,11 @@ import { Command } from 'commander';
 import { readdir } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
-import { readEpicFile, readFeatureFile } from '../core/parser.js';
+import { readEpicFile, readFeatureFile, readMilestoneFile } from '../core/parser.js';
 
 export const listCommand = new Command('list')
-  .description('List Epics or Features')
-  .argument('[type]', 'Type to list: epics or features', 'epics')
+  .description('List Epics, Features, or Milestones')
+  .argument('[type]', 'Type to list: epics, features, or milestones', 'epics')
   .option('-s, --status <status>', 'Filter by status')
   .option('-a, --assignee <name>', 'Filter by assignee (features only)')
   .action(async (type, options) => {
@@ -17,8 +17,10 @@ export const listCommand = new Command('list')
         await listEpics(pmspaceDir, options);
       } else if (type === 'features') {
         await listFeatures(pmspaceDir, options);
+      } else if (type === 'milestones') {
+        await listMilestones(pmspaceDir, options);
       } else {
-        console.error(chalk.red(`Unknown type: ${type}. Use 'epics' or 'features'.`));
+        console.error(chalk.red(`Unknown type: ${type}. Use 'epics', 'features', or 'milestones'.`));
         process.exit(1);
       }
     } catch (error: any) {
@@ -116,4 +118,57 @@ async function listFeatures(pmspaceDir: string, options: any) {
 
   const totalHours = features.reduce((sum, f) => sum + f.estimate, 0);
   console.log(chalk.gray(`\nTotal: ${features.length} Feature(s), ${totalHours}h estimated`));
+}
+
+async function listMilestones(pmspaceDir: string, options: any) {
+  const milestonesDir = join(pmspaceDir, 'milestones');
+  let files: string[] = [];
+  try {
+    files = await readdir(milestonesDir);
+  } catch {
+    console.log(chalk.yellow('No Milestones found. Directory does not exist.'));
+    return;
+  }
+
+  const milestoneFiles = files.filter(f => f.endsWith('.md'));
+
+  if (milestoneFiles.length === 0) {
+    console.log(chalk.yellow('No Milestones found.'));
+    return;
+  }
+
+  const milestones = [];
+  for (const file of milestoneFiles) {
+    const milestone = await readMilestoneFile(join(milestonesDir, file));
+    if (!options.status || milestone.status === options.status) {
+      milestones.push(milestone);
+    }
+  }
+
+  // Sort by target date
+  milestones.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+
+  console.log(chalk.bold('\nMilestones:\n'));
+  console.log(
+    chalk.gray(
+      `${'ID'.padEnd(12)} ${'Title'.padEnd(30)} ${'Target Date'.padEnd(15)} ${'Status'.padEnd(12)} ${'Features'.padEnd(10)}`
+    )
+  );
+  console.log(chalk.gray('-'.repeat(90)));
+
+  for (const milestone of milestones) {
+    const statusColor =
+      milestone.status === 'completed' ? chalk.green :
+      milestone.status === 'active' ? chalk.yellow :
+      milestone.status === 'missed' ? chalk.red :
+      chalk.white;
+
+    console.log(
+      `${milestone.id.padEnd(12)} ${milestone.title.substring(0, 30).padEnd(30)} ${milestone.targetDate.padEnd(15)} ${statusColor(
+        milestone.status.padEnd(12)
+      )} ${`${milestone.features.length}`.padEnd(10)}`
+    );
+  }
+
+  console.log(chalk.gray(`\nTotal: ${milestones.length} Milestone(s)`));
 }

@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 jobs:
-  # CLI Core Tests
+  # CLI Core Tests with Coverage
   cli-test:
     name: CLI Tests
     runs-on: ubuntu-latest
@@ -25,14 +25,74 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload CLI coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: cli-coverage
+          path: coverage/
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          flags: cli
+          name: cli-coverage
+          fail_ci_if_error: false
 
       - name: Build CLI
         run: npm run build
 
-  # Frontend Tests and Build
-  frontend:
+  # Frontend Tests with Coverage
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/frontend/package-lock.json'
+
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test -- --coverage
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-coverage
+          path: web/frontend/coverage/
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
+
+  # Frontend Build & Lint
+  frontend-build:
     name: Frontend Build & Lint
     runs-on: ubuntu-latest
 
@@ -51,6 +111,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: './web/frontend/package-lock.json'
 
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
+
       - name: Install dependencies
         run: npm ci
 
@@ -67,8 +133,54 @@ jobs:
           path: web/frontend/dist/
           retention-days: 7
 
+  # Backend Tests with Coverage
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/backend/package-lock.json'
+
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test -- --coverage
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-coverage
+          path: web/backend/coverage/
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
   # Backend Build
-  backend:
+  backend-build:
     name: Backend Build
     runs-on: ubuntu-latest
 
@@ -87,6 +199,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: './web/backend/package-lock.json'
 
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
+
       - name: Install dependencies
         run: npm ci
 
@@ -100,7 +218,38 @@ jobs:
           path: web/backend/dist/
           retention-days: 7
 
-  # Type checking for shared types
+  # Shared Types Build
+  shared-build:
+    name: Shared Types Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web/shared
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build shared types
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: shared-dist
+          path: web/shared/dist/
+          retention-days: 7
+
+  # Type checking for all packages
   typecheck:
     name: TypeScript Type Check
     runs-on: ubuntu-latest
@@ -113,6 +262,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+
+      - name: Build shared types
+        working-directory: ./web/shared
+        run: |
+          npm install
+          npm run build
 
       - name: Install CLI dependencies
         run: npm ci
@@ -140,7 +295,7 @@ jobs:
   all-checks:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [cli-test, frontend, backend, typecheck]
+    needs: [cli-test, frontend-test, frontend-build, backend-test, backend-build, shared-build, typecheck]
 
     steps:
       - name: Report success

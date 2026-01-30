@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Feature } from '../../../../shared/types';
+import type { Feature } from '@pmspec/types';
 import { PriorityBadge } from '../PriorityBadge';
 import { WorkloadIndicator } from '../WorkloadIndicator';
 import {

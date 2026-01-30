@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 
 interface GanttTask {
   id: string;
@@ -18,8 +19,29 @@ interface GanttApiResponse {
   criticalPath: string[];
 }
 
+interface DependencyLine {
+  fromId: string;
+  toId: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
 export function Gantt() {
+  return (
+    <QueryErrorBoundary>
+      <GanttContent />
+    </QueryErrorBoundary>
+  );
+}
+
+function GanttContent() {
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+  const [showDependencies, setShowDependencies] = useState(true);
+  const [dependencyLines, setDependencyLines] = useState<DependencyLine[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const taskRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const { data, isLoading, error } = useQuery<GanttApiResponse>({
     queryKey: ['gantt'],
@@ -79,6 +101,50 @@ export function Gantt() {
     return { left: `${left}%`, width: `${Math.max(width, 1)}%` };
   };
 
+  // Calculate dependency lines after render
+  useEffect(() => {
+    if (!showDependencies || !containerRef.current || tasks.length === 0) {
+      setDependencyLines([]);
+      return;
+    }
+
+    // Delay to ensure DOM elements are rendered
+    const timeout = setTimeout(() => {
+      const lines: DependencyLine[] = [];
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+
+      for (const task of tasks) {
+        if (task.dependencies && task.dependencies.length > 0) {
+          const toElement = taskRefs.current.get(task.id);
+          if (!toElement) continue;
+
+          const toRect = toElement.getBoundingClientRect();
+
+          for (const depId of task.dependencies) {
+            const fromElement = taskRefs.current.get(depId);
+            if (!fromElement) continue;
+
+            const fromRect = fromElement.getBoundingClientRect();
+
+            lines.push({
+              fromId: depId,
+              toId: task.id,
+              fromX: fromRect.right - containerRect.left,
+              fromY: fromRect.top + fromRect.height / 2 - containerRect.top,
+              toX: toRect.left - containerRect.left,
+              toY: toRect.top + toRect.height / 2 - containerRect.top,
+            });
+          }
+        }
+      }
+
+      setDependencyLines(lines);
+    }, 100);
+
+    return () => clearTimeout(timeout);
+  }, [tasks, showDependencies]);
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -100,6 +166,16 @@ export function Gantt() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold text-gray-900">Gantt Chart</h2>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowDependencies(!showDependencies)}
+            className={`px-4 py-2 rounded-md ${
+              showDependencies
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            {showDependencies ? 'Hide' : 'Show'} Dependencies
+          </button>
           <button
             onClick={() => setViewMode('week')}
             className={`px-4 py-2 rounded-md ${
@@ -128,7 +204,44 @@ export function Gantt() {
           No tasks available for gantt chart.
         </div>
       ) : (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div ref={containerRef} className="bg-white shadow rounded-lg overflow-hidden relative">
+          {/* Dependency Lines SVG Overlay */}
+          {showDependencies && dependencyLines.length > 0 && (
+            <svg
+              className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 10 }}
+            >
+              <defs>
+                <marker
+                  id="arrowhead"
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea" />
+                </marker>
+              </defs>
+              {dependencyLines.map((line, idx) => {
+                // Create a curved path from source to target
+                const midX = (line.fromX + line.toX) / 2;
+                const path = `M ${line.fromX} ${line.fromY} C ${midX} ${line.fromY}, ${midX} ${line.toY}, ${line.toX} ${line.toY}`;
+                return (
+                  <path
+                    key={`${line.fromId}-${line.toId}-${idx}`}
+                    d={path}
+                    stroke="#9333ea"
+                    strokeWidth="2"
+                    fill="none"
+                    markerEnd="url(#arrowhead)"
+                    opacity="0.6"
+                  />
+                );
+              })}
+            </svg>
+          )}
+
           {/* Timeline Header */}
           <div className="flex border-b">
             <div className="w-64 flex-shrink-0 p-4 bg-gray-50 font-semibold border-r">
@@ -152,6 +265,7 @@ export function Gantt() {
             {tasks.map((task: GanttTask) => {
               const position = calculatePosition(task.start, task.end);
               const isCritical = criticalPath.includes(task.id);
+              const hasDependencies = task.dependencies && task.dependencies.length > 0;
 
               return (
                 <div key={task.id} className="flex border-b hover:bg-gray-50">
@@ -166,6 +280,11 @@ export function Gantt() {
                       <div>
                         <div className={`text-sm ${task.type === 'epic' ? 'font-semibold' : ''}`}>
                           {task.name}
+                          {hasDependencies && (
+                            <span className="ml-1 text-purple-600" title={`Depends on: ${task.dependencies.join(', ')}`}>
+                              🔗
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500">{task.id}</div>
                       </div>
@@ -175,6 +294,9 @@ export function Gantt() {
                   {/* Timeline Bar */}
                   <div className="flex-1 p-2 relative" style={{ minHeight: '60px' }}>
                     <div
+                      ref={(el) => {
+                        if (el) taskRefs.current.set(task.id, el);
+                      }}
                       className={`absolute h-8 rounded ${
                         task.type === 'epic'
                           ? isCritical
@@ -193,7 +315,7 @@ export function Gantt() {
                       }}
                       title={`${task.name}\n${task.start} to ${task.end}\nProgress: ${task.progress.toFixed(
                         0
-                      )}%`}
+                      )}%${hasDependencies ? `\nDepends on: ${task.dependencies.join(', ')}` : ''}`}
                     >
                       <div className="flex items-center justify-between h-full px-2 text-white text-xs">
                         <span className="truncate">{task.name}</span>
@@ -234,6 +356,13 @@ export function Gantt() {
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-gray-400 rounded"></div>
               <span>To Do</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-6 h-4">
+                <line x1="0" y1="8" x2="20" y2="8" stroke="#9333ea" strokeWidth="2" />
+                <polygon points="20,4 24,8 20,12" fill="#9333ea" />
+              </svg>
+              <span>Dependency</span>
             </div>
           </div>
         </div>

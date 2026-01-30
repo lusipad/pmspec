@@ -1,5 +1,12 @@
 // Shared types between frontend and backend
 
+export type DependencyType = 'blocks' | 'relates-to';
+
+export interface Dependency {
+  featureId: string;
+  type: DependencyType;
+}
+
 export interface Epic {
   id: string;
   title: string;
@@ -13,6 +20,7 @@ export interface Epic {
 
 export type Priority = 'critical' | 'high' | 'medium' | 'low';
 export type WorkloadSize = 'S' | 'M' | 'L' | 'XL';
+export type MilestoneStatus = 'upcoming' | 'active' | 'completed' | 'missed';
 
 export interface Feature {
   id: string;
@@ -27,6 +35,7 @@ export interface Feature {
   skillsRequired: string[];
   userStories?: UserStory[];
   acceptanceCriteria?: string[];
+  dependencies?: Dependency[];
 }
 
 export interface UserStory {
@@ -34,6 +43,15 @@ export interface UserStory {
   title: string;
   estimate: number;
   status: 'todo' | 'in-progress' | 'done';
+}
+
+export interface Milestone {
+  id: string;
+  title: string;
+  description?: string;
+  targetDate: string;
+  status: MilestoneStatus;
+  features: string[];
 }
 
 export interface TeamMember {

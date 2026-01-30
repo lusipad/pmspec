@@ -1,0 +1,15 @@
+apiVersion: v2
+name: pmspec
+description: AI-driven project management specification tool
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - project-management
+  - specification
+  - ai
+  - devops
+home: https://github.com/your-org/pmspec
+maintainers:
+  - name: PMSpec Team
+    email: team@pmspec.dev

@@ -16,6 +16,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { api } from '../services/api';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { FeatureCard } from '../components/Kanban/FeatureCard';
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 
 interface Feature {
   id: string;
@@ -29,6 +30,14 @@ interface Feature {
 }
 
 export function Kanban() {
+  return (
+    <QueryErrorBoundary>
+      <KanbanContent />
+    </QueryErrorBoundary>
+  );
+}
+
+function KanbanContent() {
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState('');

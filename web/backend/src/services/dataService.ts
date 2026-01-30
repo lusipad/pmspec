@@ -1,6 +1,6 @@
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import type { Epic, Feature } from '../../../shared/types';
+import type { Epic, Feature, Milestone, Dependency } from '@pmspec/types';
 
 const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
 
@@ -86,6 +86,26 @@ function parseFeatureContent(content: string): Feature {
     ? (priority as any)
     : 'medium';
 
+  // Parse Dependencies
+  const depsSection = content.match(/## Dependencies\n([\s\S]*?)(?=\n##|$)/);
+  const dependencies: Dependency[] = [];
+
+  if (depsSection) {
+    // Parse blocks: FEAT-002, FEAT-003
+    const blocksMatch = depsSection[1].match(/-\s+blocks:\s+(.+)/i);
+    if (blocksMatch) {
+      const blockIds = blocksMatch[1].split(',').map((s: string) => s.trim()).filter((s: string) => /^FEAT-\d+$/.test(s));
+      blockIds.forEach((id: string) => dependencies.push({ featureId: id, type: 'blocks' }));
+    }
+
+    // Parse relates-to: FEAT-005
+    const relatesToMatch = depsSection[1].match(/-\s+relates-to:\s+(.+)/i);
+    if (relatesToMatch) {
+      const relatedIds = relatesToMatch[1].split(',').map((s: string) => s.trim()).filter((s: string) => /^FEAT-\d+$/.test(s));
+      relatedIds.forEach((id: string) => dependencies.push({ featureId: id, type: 'relates-to' }));
+    }
+  }
+
   return {
     id: metadata['ID'] || '',
     epic: metadata['Epic'] || '',
@@ -97,6 +117,7 @@ function parseFeatureContent(content: string): Feature {
     estimate: parseInt(metadata['Estimate']) || 0,
     actual: parseInt(metadata['Actual']) || 0,
     skillsRequired,
+    dependencies,
   };
 }
 
@@ -241,4 +262,187 @@ export async function getTeam(): Promise<any> {
     console.error('Error reading team:', error);
     return { members: [] };
   }
+}
+
+/**
+ * Parse Milestone from markdown content
+ */
+function parseMilestoneContent(content: string): Milestone {
+  const metadata = parseMetadata(content);
+
+  // Parse title
+  const titleMatch = content.match(/^#\s+Milestone:\s+(.+)$/m);
+  const title = titleMatch ? titleMatch[1].trim() : 'Untitled';
+
+  // Parse description
+  const descSection = content.match(/## Description\n([\s\S]*?)(?=\n##|$)/);
+  const description = descSection ? descSection[1].trim() : undefined;
+
+  // Parse features list (with checkboxes)
+  const featuresSection = content.match(/## Features\n([\s\S]*?)(?=\n##|$)/);
+  const features: string[] = [];
+
+  if (featuresSection) {
+    const featureRegex = /-\s+\[[x ]\]\s+(FEAT-\d+)/g;
+    let match;
+    while ((match = featureRegex.exec(featuresSection[1])) !== null) {
+      features.push(match[1]);
+    }
+  }
+
+  return {
+    id: metadata['ID'] || '',
+    title,
+    description,
+    targetDate: metadata['Target Date'] || '',
+    status: (metadata['Status'] as any) || 'upcoming',
+    features,
+  };
+}
+
+/**
+ * Generate Milestone markdown content
+ */
+function generateMilestoneMarkdown(milestone: Milestone): string {
+  const lines: string[] = [];
+
+  lines.push(`# Milestone: ${milestone.title}`);
+  lines.push('');
+  lines.push(`- **ID**: ${milestone.id}`);
+  lines.push(`- **Target Date**: ${milestone.targetDate}`);
+  lines.push(`- **Status**: ${milestone.status}`);
+  lines.push('');
+
+  if (milestone.description) {
+    lines.push('## Description');
+    lines.push(milestone.description);
+    lines.push('');
+  }
+
+  if (milestone.features.length > 0) {
+    lines.push('## Features');
+    for (const featureId of milestone.features) {
+      lines.push(`- [ ] ${featureId}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Get all milestones
+ */
+export async function getMilestones(): Promise<Milestone[]> {
+  try {
+    const milestonesDir = path.join(PMSPACE_DIR, 'milestones');
+    let files: string[];
+    try {
+      files = await readdir(milestonesDir);
+    } catch {
+      return [];
+    }
+
+    const milestoneFiles = files.filter((f) => f.endsWith('.md'));
+    const milestones: Milestone[] = [];
+
+    for (const file of milestoneFiles) {
+      try {
+        const content = await readFile(path.join(milestonesDir, file), 'utf-8');
+        const milestone = parseMilestoneContent(content);
+        milestones.push(milestone);
+      } catch (err) {
+        console.error(`Error parsing milestone file ${file}:`, err);
+      }
+    }
+
+    return milestones.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+  } catch (error) {
+    console.error('Error reading milestones:', error);
+    return [];
+  }
+}
+
+/**
+ * Get milestone by ID
+ */
+export async function getMilestoneById(id: string): Promise<Milestone | null> {
+  try {
+    const milestonesDir = path.join(PMSPACE_DIR, 'milestones');
+    let files: string[];
+    try {
+      files = await readdir(milestonesDir);
+    } catch {
+      return null;
+    }
+
+    for (const file of files) {
+      const content = await readFile(path.join(milestonesDir, file), 'utf-8');
+      const milestone = parseMilestoneContent(content);
+
+      if (milestone.id === id) {
+        return milestone;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error reading milestone:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a new milestone
+ */
+export async function createMilestone(milestone: Omit<Milestone, 'id'>): Promise<Milestone> {
+  const milestonesDir = path.join(PMSPACE_DIR, 'milestones');
+  
+  // Ensure directory exists
+  await mkdir(milestonesDir, { recursive: true });
+
+  // Get existing milestones to determine next ID
+  const existingMilestones = await getMilestones();
+  const existingIds = existingMilestones.map(m => m.id);
+  
+  // Generate next ID
+  let nextNum = 1;
+  if (existingIds.length > 0) {
+    const numbers = existingIds.map(id => parseInt(id.replace('MILE-', ''), 10));
+    nextNum = Math.max(...numbers) + 1;
+  }
+  const newId = `MILE-${nextNum.toString().padStart(3, '0')}`;
+
+  const newMilestone: Milestone = {
+    id: newId,
+    ...milestone,
+  };
+
+  const content = generateMilestoneMarkdown(newMilestone);
+  await writeFile(path.join(milestonesDir, `${newId.toLowerCase()}.md`), content, 'utf-8');
+
+  return newMilestone;
+}
+
+/**
+ * Update an existing milestone
+ */
+export async function updateMilestone(id: string, updates: Partial<Milestone>): Promise<Milestone | null> {
+  const milestonesDir = path.join(PMSPACE_DIR, 'milestones');
+  const existing = await getMilestoneById(id);
+  
+  if (!existing) {
+    return null;
+  }
+
+  const updated: Milestone = {
+    ...existing,
+    ...updates,
+    id, // Ensure ID is not changed
+  };
+
+  const content = generateMilestoneMarkdown(updated);
+  await writeFile(path.join(milestonesDir, `${id.toLowerCase()}.md`), content, 'utf-8');
+
+  return updated;
 }

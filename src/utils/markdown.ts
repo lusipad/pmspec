@@ -1,6 +1,6 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
-import type { Epic, Feature, UserStory, Project } from '../core/project.js';
+import type { Epic, Feature, UserStory, Project, Milestone } from '../core/project.js';
 import type { Team } from '../core/team.js';
 
 /**
@@ -81,6 +81,20 @@ export function generateFeatureMarkdown(feature: Feature): string {
     lines.push('');
   }
 
+  if (feature.dependencies && feature.dependencies.length > 0) {
+    lines.push('## Dependencies');
+    const blocks = feature.dependencies.filter(d => d.type === 'blocks').map(d => d.featureId);
+    const relatesTo = feature.dependencies.filter(d => d.type === 'relates-to').map(d => d.featureId);
+    
+    if (blocks.length > 0) {
+      lines.push(`- blocks: ${blocks.join(', ')}`);
+    }
+    if (relatesTo.length > 0) {
+      lines.push(`- relates-to: ${relatesTo.join(', ')}`);
+    }
+    lines.push('');
+  }
+
   return lines.join('\n');
 }
 
@@ -147,6 +161,36 @@ export function generateTeamMarkdown(team: Team): string {
 }
 
 /**
+ * Generate Milestone markdown content
+ */
+export function generateMilestoneMarkdown(milestone: Milestone): string {
+  const lines: string[] = [];
+
+  lines.push(`# Milestone: ${milestone.title}`);
+  lines.push('');
+  lines.push(`- **ID**: ${milestone.id}`);
+  lines.push(`- **Target Date**: ${milestone.targetDate}`);
+  lines.push(`- **Status**: ${milestone.status}`);
+  lines.push('');
+
+  if (milestone.description) {
+    lines.push('## Description');
+    lines.push(milestone.description);
+    lines.push('');
+  }
+
+  if (milestone.features.length > 0) {
+    lines.push('## Features');
+    for (const featureId of milestone.features) {
+      lines.push(`- [ ] ${featureId}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Write Epic to file
  */
 export async function writeEpicFile(filePath: string, epic: Epic): Promise<void> {
@@ -178,6 +222,15 @@ export async function writeProjectFile(filePath: string, project: Project): Prom
  */
 export async function writeTeamFile(filePath: string, team: Team): Promise<void> {
   const content = generateTeamMarkdown(team);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Write Milestone to file
+ */
+export async function writeMilestoneFile(filePath: string, milestone: Milestone): Promise<void> {
+  const content = generateMilestoneMarkdown(milestone);
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, content, 'utf-8');
 }

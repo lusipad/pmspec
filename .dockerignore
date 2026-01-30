@@ -1,0 +1,54 @@
+# Development dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Build outputs (rebuilt in container)
+dist/
+*/dist/
+**/dist/
+
+# Development files
+.git/
+.gitignore
+.github/
+*.md
+!README.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+e2e/
+coverage/
+.nyc_output/
+
+# Environment files (use Docker secrets instead)
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+temp/
+tmp/
+
+# Openspec development files
+openspec/
+
+# Demo and example files
+demo/
+examples/

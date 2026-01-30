@@ -4,6 +4,7 @@ import { readEpicFile, readFeatureFile } from '../core/parser.js';
 import { writeEpicFile, writeFeatureFile } from '../utils/markdown.js';
 import { EpicStatus, FeatureStatus, StoryStatus } from '../core/project.js';
 import { join } from 'path';
+import { getChangelogService } from '../core/changelog-service.js';
 
 const updateCommand = new Command('update')
   .description('Update status, actual hours, or assignee of existing items')
@@ -47,6 +48,7 @@ async function updateEpic(id: string, options: any) {
   try {
     const epic = await readEpicFile(filePath);
     let changed = false;
+    const changes: Record<string, { oldValue: unknown; newValue: unknown }> = {};
 
     // Update status
     if (options.status) {
@@ -55,6 +57,7 @@ async function updateEpic(id: string, options: any) {
         console.error(chalk.yellow('Valid statuses:', EpicStatus.options.join(', ')));
         process.exit(1);
       }
+      changes.status = { oldValue: epic.status, newValue: options.status };
       epic.status = options.status;
       changed = true;
       console.log(chalk.green(`✓ Updated ${id} status to ${options.status}`));
@@ -67,6 +70,7 @@ async function updateEpic(id: string, options: any) {
         console.error(chalk.red('Error: Actual hours must be a non-negative number'));
         process.exit(1);
       }
+      changes.actual = { oldValue: epic.actual, newValue: actualHours };
       epic.actual = actualHours;
       changed = true;
 
@@ -86,6 +90,13 @@ async function updateEpic(id: string, options: any) {
 
     if (changed) {
       await writeEpicFile(filePath, epic);
+      
+      // Record changelog entries
+      try {
+        await getChangelogService().recordUpdates('epic', id, changes);
+      } catch {
+        // Silently fail if changelog can't be written
+      }
     } else {
       console.log(chalk.yellow('No changes specified. Use --status, --actual, or --assignee'));
     }
@@ -105,6 +116,7 @@ async function updateFeature(id: string, options: any) {
   try {
     const feature = await readFeatureFile(filePath);
     let changed = false;
+    const changes: Record<string, { oldValue: unknown; newValue: unknown }> = {};
 
     // Update status
     if (options.status) {
@@ -113,6 +125,7 @@ async function updateFeature(id: string, options: any) {
         console.error(chalk.yellow('Valid statuses:', FeatureStatus.options.join(', ')));
         process.exit(1);
       }
+      changes.status = { oldValue: feature.status, newValue: options.status };
       feature.status = options.status;
       changed = true;
       console.log(chalk.green(`✓ Updated ${id} status to ${options.status}`));
@@ -125,6 +138,7 @@ async function updateFeature(id: string, options: any) {
         console.error(chalk.red('Error: Actual hours must be a non-negative number'));
         process.exit(1);
       }
+      changes.actual = { oldValue: feature.actual, newValue: actualHours };
       feature.actual = actualHours;
       changed = true;
 
@@ -139,6 +153,7 @@ async function updateFeature(id: string, options: any) {
 
     // Update assignee
     if (options.assignee !== undefined) {
+      changes.assignee = { oldValue: feature.assignee, newValue: options.assignee || undefined };
       feature.assignee = options.assignee || undefined;
       changed = true;
       if (feature.assignee) {
@@ -150,6 +165,13 @@ async function updateFeature(id: string, options: any) {
 
     if (changed) {
       await writeFeatureFile(filePath, feature);
+      
+      // Record changelog entries
+      try {
+        await getChangelogService().recordUpdates('feature', id, changes);
+      } catch {
+        // Silently fail if changelog can't be written
+      }
     } else {
       console.log(chalk.yellow('No changes specified. Use --status, --actual, or --assignee'));
     }
@@ -199,6 +221,7 @@ async function updateStory(id: string, options: any) {
 
   let changed = false;
   const story = feature.userStories[storyIndex];
+  const changes: Record<string, { oldValue: unknown; newValue: unknown }> = {};
 
   // Update status
   if (options.status) {
@@ -207,6 +230,7 @@ async function updateStory(id: string, options: any) {
       console.error(chalk.yellow('Valid statuses:', StoryStatus.options.join(', ')));
       process.exit(1);
     }
+    changes.status = { oldValue: story.status, newValue: options.status };
     story.status = options.status;
     changed = true;
     console.log(chalk.green(`✓ Updated ${id} status to ${options.status}`));
@@ -224,6 +248,13 @@ async function updateStory(id: string, options: any) {
 
   if (changed) {
     await writeFeatureFile(featurePath, feature);
+    
+    // Record changelog entries
+    try {
+      await getChangelogService().recordUpdates('story', id, changes);
+    } catch {
+      // Silently fail if changelog can't be written
+    }
   } else {
     console.log(chalk.yellow('No changes specified. Use --status for stories'));
   }

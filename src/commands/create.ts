@@ -3,13 +3,14 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
-import { EpicSchema, FeatureSchema, UserStorySchema, generateNextId } from '../core/project.js';
-import { writeEpicFile, writeFeatureFile } from '../utils/markdown.js';
-import { readEpicFile, readFeatureFile } from '../core/parser.js';
+import { EpicSchema, FeatureSchema, UserStorySchema, MilestoneSchema, generateNextId } from '../core/project.js';
+import { writeEpicFile, writeFeatureFile, writeMilestoneFile } from '../utils/markdown.js';
+import { readEpicFile, readFeatureFile, readMilestoneFile } from '../core/parser.js';
+import { getChangelogService } from '../core/changelog-service.js';
 
 const createCommand = new Command('create')
-  .description('Create new Epic, Feature, or User Story')
-  .argument('<type>', 'Type of item to create (epic, feature, story)')
+  .description('Create new Epic, Feature, User Story, or Milestone')
+  .argument('<type>', 'Type of item to create (epic, feature, story, milestone)')
   .option('-e, --epic <id>', 'Epic ID for Feature (required for feature)')
   .option('-f, --feature <id>', 'Feature ID for Story (required for story)')
   .option('--non-interactive', 'Skip prompts and use defaults')
@@ -17,8 +18,8 @@ const createCommand = new Command('create')
     try {
       type = type.toLowerCase();
 
-      if (!['epic', 'feature', 'story'].includes(type)) {
-        console.error(chalk.red('Error: Type must be epic, feature, or story'));
+      if (!['epic', 'feature', 'story', 'milestone'].includes(type)) {
+        console.error(chalk.red('Error: Type must be epic, feature, story, or milestone'));
         process.exit(1);
       }
 
@@ -36,6 +37,8 @@ const createCommand = new Command('create')
         await createFeature(options.epic, options.nonInteractive);
       } else if (type === 'story') {
         await createStory(options.feature, options.nonInteractive);
+      } else if (type === 'milestone') {
+        await createMilestone(options.nonInteractive);
       }
 
     } catch (error: any) {
@@ -72,6 +75,14 @@ async function createEpic(nonInteractive: boolean) {
     });
 
     await writeEpicFile(`pmspace/epics/${epicId.toLowerCase()}.md`, epic);
+    
+    // Record changelog entry
+    try {
+      await getChangelogService().recordCreate('epic', epicId);
+    } catch {
+      // Silently fail if changelog can't be written
+    }
+    
     console.log(chalk.green(`✓ Created Epic ${epicId}`));
     return;
   }
@@ -120,6 +131,14 @@ async function createEpic(nonInteractive: boolean) {
   });
 
   await writeEpicFile(`pmspace/epics/${epicId.toLowerCase()}.md`, epic);
+  
+  // Record changelog entry
+  try {
+    await getChangelogService().recordCreate('epic', epicId);
+  } catch {
+    // Silently fail if changelog can't be written
+  }
+  
   console.log(chalk.green(`✓ Created Epic ${epicId}: ${epic.title}`));
 }
 
@@ -199,6 +218,14 @@ async function createFeature(epicId: string | undefined, nonInteractive: boolean
     });
 
     await writeFeatureFile(`pmspace/features/${featureId.toLowerCase()}.md`, feature);
+    
+    // Record changelog entry
+    try {
+      await getChangelogService().recordCreate('feature', featureId);
+    } catch {
+      // Silently fail if changelog can't be written
+    }
+    
     console.log(chalk.green(`✓ Created Feature ${featureId} under Epic ${epicId}`));
     return;
   }
@@ -269,6 +296,13 @@ async function createFeature(epicId: string | undefined, nonInteractive: boolean
   if (!epic.features.includes(featureId)) {
     epic.features.push(featureId);
     await writeEpicFile(epicPath, epic);
+  }
+
+  // Record changelog entry
+  try {
+    await getChangelogService().recordCreate('feature', featureId);
+  } catch {
+    // Silently fail if changelog can't be written
   }
 
   console.log(chalk.green(`✓ Created Feature ${featureId}: ${feature.title} under Epic ${epicId}`));
@@ -352,6 +386,13 @@ async function createStory(featureId: string | undefined, nonInteractive: boolea
     feature.userStories.push(story);
     await writeFeatureFile(featurePath, feature);
 
+    // Record changelog entry
+    try {
+      await getChangelogService().recordCreate('story', storyId);
+    } catch {
+      // Silently fail if changelog can't be written
+    }
+
     console.log(chalk.green(`✓ Created User Story ${storyId} under Feature ${featureId}`));
     return;
   }
@@ -399,7 +440,129 @@ async function createStory(featureId: string | undefined, nonInteractive: boolea
   feature.userStories.push(story);
   await writeFeatureFile(featurePath, feature);
 
+  // Record changelog entry
+  try {
+    await getChangelogService().recordCreate('story', storyId);
+  } catch {
+    // Silently fail if changelog can't be written
+  }
+
   console.log(chalk.green(`✓ Created User Story ${storyId}: ${story.title} under Feature ${featureId}`));
+}
+
+async function createMilestone(nonInteractive: boolean) {
+  // Get existing milestones to determine next ID
+  let existingMilestones: string[] = [];
+  try {
+    const milestoneFiles = await readdir('pmspace/milestones');
+    for (const file of milestoneFiles) {
+      if (file.endsWith('.md')) {
+        const content = await readMilestoneFile(join('pmspace/milestones', file));
+        existingMilestones.push(content.id);
+      }
+    }
+  } catch {
+    // Directory might not exist or be empty - create it
+    await mkdir('pmspace/milestones', { recursive: true });
+  }
+
+  const milestoneId = generateNextId('MILE', existingMilestones);
+
+  if (nonInteractive) {
+    const today = new Date();
+    const targetDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+    const milestone = MilestoneSchema.parse({
+      id: milestoneId,
+      title: 'New Milestone',
+      status: 'upcoming',
+      targetDate: targetDate.toISOString().split('T')[0],
+      description: 'Milestone description',
+      features: []
+    });
+
+    await writeMilestoneFile(`pmspace/milestones/${milestoneId.toLowerCase()}.md`, milestone);
+    
+    // Record changelog entry
+    try {
+      await getChangelogService().recordCreate('milestone', milestoneId);
+    } catch {
+      // Silently fail if changelog can't be written
+    }
+    
+    console.log(chalk.green(`✓ Created Milestone ${milestoneId}`));
+    return;
+  }
+
+  // Get available features for selection
+  const features: Array<{id: string, title: string}> = [];
+  try {
+    const featureFiles = await readdir('pmspace/features');
+    for (const file of featureFiles) {
+      if (file.endsWith('.md')) {
+        const content = await readFeatureFile(join('pmspace/features', file));
+        features.push({ id: content.id, title: content.title });
+      }
+    }
+  } catch {
+    // No features yet
+  }
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input' as const,
+      name: 'title' as const,
+      message: 'Milestone title:' as const,
+      validate: (input: string) => input.trim() !== '' || 'Title is required'
+    },
+    {
+      type: 'input' as const,
+      name: 'targetDate' as const,
+      message: 'Target date (YYYY-MM-DD):' as const,
+      validate: (input: string) => {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        return dateRegex.test(input) || 'Date must be in YYYY-MM-DD format';
+      }
+    },
+    {
+      type: 'list' as const,
+      name: 'status' as const,
+      message: 'Status:' as const,
+      choices: ['upcoming', 'active', 'completed', 'missed'],
+      default: 'upcoming'
+    },
+    {
+      type: 'input' as const,
+      name: 'description' as const,
+      message: 'Description (optional):' as const
+    },
+    {
+      type: 'checkbox' as const,
+      name: 'features' as const,
+      message: 'Select features for this milestone:' as const,
+      choices: features.map(f => ({ name: `${f.id}: ${f.title}`, value: f.id })),
+      when: () => features.length > 0
+    }
+  ]) as any;
+
+  const milestone = MilestoneSchema.parse({
+    id: milestoneId,
+    title: answers.title.trim(),
+    status: answers.status,
+    targetDate: answers.targetDate,
+    description: answers.description?.trim() || undefined,
+    features: answers.features || []
+  });
+
+  await writeMilestoneFile(`pmspace/milestones/${milestoneId.toLowerCase()}.md`, milestone);
+  
+  // Record changelog entry
+  try {
+    await getChangelogService().recordCreate('milestone', milestoneId);
+  } catch {
+    // Silently fail if changelog can't be written
+  }
+  
+  console.log(chalk.green(`✓ Created Milestone ${milestoneId}: ${milestone.title}`));
 }
 
 export { createCommand };

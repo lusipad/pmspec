@@ -2,17 +2,19 @@ import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { PriorityBadge } from '../components/PriorityBadge';
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 
-interface Feature {
+interface LocalFeature {
   id: string;
   epic: string;
   title: string;
-  priority: 'P0' | 'P1' | 'P2' | 'P3';
-  status: 'todo' | 'in-progress' | 'done';
+  priority: string;
+  status: string;
   assignee: string;
   estimate: number;
   actual: number;
   skillsRequired: string[];
+  [key: string]: string | number | string[] | undefined;
 }
 
 interface ImportError {
@@ -27,6 +29,14 @@ interface ImportApiError extends Error {
 }
 
 export function Features() {
+  return (
+    <QueryErrorBoundary>
+      <FeaturesContent />
+    </QueryErrorBoundary>
+  );
+}
+
+function FeaturesContent() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,9 +47,9 @@ export function Features() {
   const [sortBy, setSortBy] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
-  const { data: features, isLoading } = useQuery<Feature[]>({
+  const { data: features, isLoading, error } = useQuery<LocalFeature[]>({
     queryKey: ['features'],
-    queryFn: () => api.getFeatures<Feature[]>(),
+    queryFn: () => api.getFeatures<LocalFeature[]>(),
   });
 
   // CSV Export
