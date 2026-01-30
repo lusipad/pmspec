@@ -49,7 +49,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
+    "@types/node": "^25.1.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.17",
     "typescript": "^5.9.2",
@@ -61,8 +61,7 @@
     "chalk": "^5.5.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
-    "inquirer": "^13.2.1",
-    "minisearch": "^7.2.0",
+    "inquirer": "^13.2.2",
     "open": "^11.0.0",
     "ora": "^9.1.0",
     "zod": "^4.3.6"
