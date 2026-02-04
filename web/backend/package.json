@@ -23,7 +23,7 @@
     "minisearch": "^7.1.2",
     "multer": "^2.0.2",
     "papaparse": "^5.5.3",
-    "pino": "^9.6.0",
+    "pino": "^10.3.0",
     "pino-http": "^11.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
