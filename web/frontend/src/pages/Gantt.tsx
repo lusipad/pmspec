@@ -140,7 +140,6 @@ function GanttContent() {
         }
       }
 
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- This is intentional: DOM-based calculations must happen after render
       setDependencyLines(lines);
     }, 100);
 

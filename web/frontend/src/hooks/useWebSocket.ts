@@ -113,18 +113,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   useEffect(() => {
     if (status !== 'connected') return;
 
+    const currentChannels = subscribedChannels.current;
+
     channels.forEach(channel => {
-      if (!subscribedChannels.current.has(channel)) {
+      if (!currentChannels.has(channel)) {
         wsClient.subscribe(channel);
-        subscribedChannels.current.add(channel);
+        currentChannels.add(channel);
       }
     });
 
     return () => {
-      subscribedChannels.current.forEach(channel => {
+      currentChannels.forEach(channel => {
         wsClient.unsubscribe(channel);
       });
-      subscribedChannels.current.clear();
+      currentChannels.clear();
     };
   }, [status, channels]);
 
