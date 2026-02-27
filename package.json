@@ -44,7 +44,7 @@
     "dev:cli": "npm run build && node bin/pmspec.js",
     "desktop:dev": "node ./desktop/dev.cjs",
     "desktop:build": "npm --prefix ./web/shared run build && npm --prefix ./web/backend run build && npm --prefix ./web/frontend run build && npm run build",
-    "desktop:package": "npm run desktop:build && electron-builder --win nsis zip",
+    "desktop:package": "npm run desktop:build && electron-builder --publish never --win nsis zip",
     "desktop:smoke": "node ./scripts/desktop-smoke.cjs",
     "desktop:verify": "npm run desktop:package && npm run desktop:smoke",
     "test": "vitest run",
