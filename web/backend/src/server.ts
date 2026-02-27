@@ -1,5 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import path from 'path';
 import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
@@ -22,6 +23,23 @@ import { fileWatcher } from './services/fileWatcher';
 
 const app: Express = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const HOST = process.env.HOST;
+
+function resolveFrontendDistPath(): string | null {
+  const candidates = [
+    path.resolve(__dirname, '../../frontend/dist'),
+    path.resolve(__dirname, '../../../../frontend/dist'),
+    path.resolve(process.cwd(), 'web/frontend/dist'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 // Middleware
 app.use(cors());
@@ -69,12 +87,17 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // Serve frontend static files in production
 if (process.env.NODE_ENV === 'production') {
-  const frontendPath = path.join(__dirname, '../../frontend/dist');
-  app.use(express.static(frontendPath));
+  const frontendPath = resolveFrontendDistPath();
 
-  app.get('*', (req: Request, res: Response) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-  });
+  if (frontendPath) {
+    app.use(express.static(frontendPath));
+
+    app.get(/.*/, (req: Request, res: Response) => {
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    });
+  } else {
+    logger.warn('Frontend dist directory not found; static hosting disabled');
+  }
 }
 
 // Error handling middleware (RFC 7807)
@@ -93,8 +116,9 @@ export function startServer(port: number = PORT): Promise<any> {
     // Initialize file watcher
     fileWatcher.initialize();
     
-    httpServer.listen(port, () => {
-      logger.info({ port, url: `http://localhost:${port}` }, '🚀 PMSpec Web Server running');
+    httpServer.listen(port, HOST, () => {
+      const hostForLog = HOST || 'localhost';
+      logger.info({ port, host: hostForLog, url: `http://${hostForLog}:${port}` }, '🚀 PMSpec Web Server running');
       logger.info({ 
         api: `http://localhost:${port}/api`, 
         health: `http://localhost:${port}/api/health`,
@@ -104,33 +128,31 @@ export function startServer(port: number = PORT): Promise<any> {
       }, 'Available endpoints');
       resolve(httpServer);
     });
+  });
+}
 
-    // Graceful shutdown
-    process.on('SIGINT', () => {
-      logger.info('Shutting down gracefully...');
-      wsService.shutdown();
-      fileWatcher.shutdown();
-      httpServer.close(() => {
-        logger.info('Server closed');
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGTERM', () => {
-      logger.info('SIGTERM received, shutting down...');
-      wsService.shutdown();
-      fileWatcher.shutdown();
-      httpServer.close(() => {
-        logger.info('Server closed');
-        process.exit(0);
-      });
+export function stopServer(httpServer: any): Promise<void> {
+  return new Promise((resolve) => {
+    wsService.shutdown();
+    fileWatcher.shutdown();
+    httpServer.close(() => {
+      logger.info('Server closed');
+      resolve();
     });
   });
 }
 
 // Start server if run directly
 if (require.main === module) {
-  startServer();
+  startServer().then((httpServer) => {
+    const shutdown = (signal: 'SIGINT' | 'SIGTERM') => {
+      logger.info({ signal }, 'Shutting down gracefully...');
+      stopServer(httpServer).finally(() => process.exit(0));
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+  });
 }
 
 export default app;

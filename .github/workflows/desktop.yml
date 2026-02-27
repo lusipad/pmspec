@@ -1,0 +1,64 @@
+name: Desktop Build & Package
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-build:
+    name: Desktop Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build desktop dependencies
+        run: npm run desktop:build
+
+  desktop-package-windows:
+    name: Desktop Package (Windows)
+    runs-on: windows-latest
+    needs: [desktop-build]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build, package and smoke test desktop app
+        run: npm run desktop:verify
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-windows-${{ github.run_number }}
+          path: |
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 14

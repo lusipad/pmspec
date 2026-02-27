@@ -42,6 +42,11 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "dev:cli": "npm run build && node bin/pmspec.js",
+    "desktop:dev": "node ./desktop/dev.cjs",
+    "desktop:build": "npm --prefix ./web/shared run build && npm --prefix ./web/backend run build && npm --prefix ./web/frontend run build && npm run build",
+    "desktop:package": "npm run desktop:build && electron-builder --win nsis zip",
+    "desktop:smoke": "node ./scripts/desktop-smoke.cjs",
+    "desktop:verify": "npm run desktop:package && npm run desktop:smoke",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest --coverage"
@@ -53,19 +58,68 @@
     "@types/node": "^25.1.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.17",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
     "typescript": "^5.9.2",
     "vitest": "^4.0.17"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.2.0",
     "@types/inquirer": "^9.0.9",
+    "bcryptjs": "^3.0.3",
     "chalk": "^5.5.0",
+    "chokidar": "^5.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "inquirer": "^13.2.2",
+    "jsonwebtoken": "^9.0.3",
     "minisearch": "^7.1.2",
+    "multer": "^2.0.2",
     "open": "^11.0.0",
     "ora": "^9.1.0",
+    "papaparse": "^5.5.3",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.18.0",
     "zod": "^4.3.6"
+  },
+  "build": {
+    "appId": "com.lusipad.pmspec.desktop",
+    "productName": "PMSpec",
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop/build"
+    },
+    "files": [
+      "desktop/**/*",
+      "web/backend/package.json",
+      "web/backend/dist/**/*",
+      "web/frontend/dist/**/*",
+      "dist/**/*",
+      "bin/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.cjs"
+    },
+    "win": {
+      "icon": "desktop/build/icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "installerIcon": "desktop/build/icon.ico",
+      "uninstallerIcon": "desktop/build/icon.ico",
+      "installerHeaderIcon": "desktop/build/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

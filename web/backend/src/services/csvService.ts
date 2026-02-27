@@ -2,8 +2,9 @@ import Papa from 'papaparse';
 import type { Feature } from '@pmspec/types';
 import { writeFile, readFile } from 'fs/promises';
 import path from 'path';
+import { getPmspaceDir } from '../config/paths';
 
-const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
+const PMSPACE_DIR = getPmspaceDir();
 
 interface FeatureCSVRow {
   ID: string;

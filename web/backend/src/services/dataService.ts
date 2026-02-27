@@ -1,8 +1,9 @@
 import { readdir, readFile, writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import type { Epic, Feature, Milestone, Dependency } from '@pmspec/types';
+import { getPmspaceDir } from '../config/paths';
 
-const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
+const PMSPACE_DIR = getPmspaceDir();
 
 /**
  * Parse metadata from markdown frontmatter-style format

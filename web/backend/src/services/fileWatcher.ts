@@ -2,10 +2,11 @@ import chokidar from 'chokidar';
 import path from 'path';
 import { wsService } from './websocket';
 import { createLogger } from '../utils/logger';
+import { getPmspaceDir } from '../config/paths';
 
 const logger = createLogger('fileWatcher');
 
-const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
+const PMSPACE_DIR = getPmspaceDir();
 const DEBOUNCE_MS = 300;
 
 class FileWatcherService {

@@ -3,12 +3,13 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { createLogger } from '../utils/logger';
 import { NotFoundError, ValidationError, InternalServerError } from '../utils/errors';
+import { getPmspaceDir } from '../config/paths';
 
 const logger = createLogger('changelog');
 
 export const changelogRoutes = Router();
 
-const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
+const PMSPACE_DIR = getPmspaceDir();
 const CHANGELOG_FILE = path.join(PMSPACE_DIR, 'changelog.json');
 
 interface ChangelogEntry {

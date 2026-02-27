@@ -6,12 +6,13 @@ import { unlink } from 'fs/promises';
 import path from 'path';
 import { createLogger } from '../utils/logger';
 import { NotFoundError, ValidationError, ConflictError, InternalServerError } from '../utils/errors';
+import { getPmspaceDir } from '../config/paths';
 
 const logger = createLogger('features');
 
 export const featureRoutes = Router();
 
-const PMSPACE_DIR = path.join(process.cwd(), '..', '..', 'pmspace');
+const PMSPACE_DIR = getPmspaceDir();
 
 /**
  * @openapi
