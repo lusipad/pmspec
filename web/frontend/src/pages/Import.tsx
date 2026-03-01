@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { api, type ImportResult } from '../services/api';
 
-type ImportSource = 'jira' | 'linear' | 'github';
+type ImportSource = 'jira' | 'linear' | 'github' | 'azure-devops' | 'feishu' | 'tencent-docs';
 type Step = 'select-source' | 'upload' | 'preview' | 'complete';
 
 interface SourceInfo {
@@ -33,6 +33,27 @@ const SOURCES: SourceInfo[] = [
     description: 'Import from GitHub Issues JSON. Milestones are preserved, labels map to skills and tags.',
     icon: '⚫',
     fileHint: 'Use GitHub CLI: gh issue list --json number,title,body,state,labels,assignee,milestone',
+  },
+  {
+    source: 'azure-devops',
+    name: 'Azure DevOps',
+    description: 'Import work items from Azure DevOps JSON export.',
+    icon: '🔷',
+    fileHint: 'Export query results from Azure DevOps as JSON.',
+  },
+  {
+    source: 'feishu',
+    name: 'Feishu',
+    description: 'Import tasks from Feishu table JSON export.',
+    icon: '🟠',
+    fileHint: 'Export records from Feishu Bitable as JSON.',
+  },
+  {
+    source: 'tencent-docs',
+    name: 'Tencent Docs',
+    description: 'Import tasks from Tencent Docs CSV/JSON export.',
+    icon: '🟢',
+    fileHint: 'Export Tencent online sheet as CSV or JSON.',
   },
 ];
 
@@ -219,12 +240,12 @@ export function Import() {
                   选择文件
                   <input
                     type="file"
-                    accept=".json"
+                    accept=".json,.csv"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
                 </label>
-                <p className="text-xs text-gray-400 mt-2">支持 JSON 格式</p>
+                <p className="text-xs text-gray-400 mt-2">支持 JSON / CSV 格式</p>
               </div>
             )}
           </div>
@@ -381,6 +402,11 @@ export function Import() {
             {importResult.stats.epicsImported > 0 && `，${importResult.stats.epicsImported} 个分类`}
             {importResult.stats.milestonesImported > 0 && `，${importResult.stats.milestonesImported} 个里程碑`}
           </p>
+          {importResult.persisted && (
+            <p className="text-sm text-gray-500 mb-6">
+              已写入本地：新增 {importResult.persisted.created} 条，更新 {importResult.persisted.updated} 条。
+            </p>
+          )}
 
           <div className="space-x-4">
             <button

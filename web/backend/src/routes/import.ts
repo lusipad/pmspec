@@ -1,11 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
+import type { Feature, FeatureStatus, Priority } from '@pmspec/types';
 import { createLogger } from '../utils/logger';
 import { ValidationError, InternalServerError } from '../utils/errors';
-
-// The importers will need to be copied or linked from the core package
-// For now, we implement a simplified inline version for the web backend
-import { z } from 'zod';
+import { writeFeatureFile } from '../services/csvService';
+import { getFeatures } from '../services/dataService';
 
 const logger = createLogger('import');
 
@@ -20,7 +19,7 @@ const upload = multer({
 });
 
 // Type definitions for import functionality
-type ImportSource = 'jira' | 'linear' | 'github';
+type ImportSource = 'jira' | 'linear' | 'github' | 'azure-devops' | 'feishu' | 'tencent-docs';
 
 interface ImportResult {
   success: boolean;
@@ -299,7 +298,291 @@ const importers: Record<ImportSource, Importer> = {
       };
     },
   },
+  'azure-devops': {
+    source: 'azure-devops',
+    name: 'Azure DevOps Importer',
+    description: 'Import work items from Azure DevOps JSON export',
+    async validate(content) {
+      const items = parseJsonList(content, ['value', 'workItems', 'items']);
+      if (!items) {
+        return { valid: false, errors: ['Invalid JSON or missing work item array'] };
+      }
+      if (items.length === 0) {
+        return { valid: false, errors: ['No work items found'] };
+      }
+      return { valid: true, errors: [] };
+    },
+    async import(options) {
+      const items = parseJsonList(options.content, ['value', 'workItems', 'items']) ?? [];
+      const features: any[] = [];
+      const epics = new Map<string, any>();
+
+      let idx = 1;
+      for (const item of items) {
+        const fields = item.fields || {};
+        const epicName = fields['System.AreaPath'] || fields['System.IterationPath'] || 'General';
+        if (!epics.has(epicName)) {
+          epics.set(epicName, {
+            id: String(epicName).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            name: epicName,
+            description: '',
+            originalId: epicName,
+          });
+        }
+
+        features.push({
+          id: `feat-${String(idx++).padStart(3, '0')}`,
+          name: fields['System.Title'] || `Work Item ${item.id ?? idx}`,
+          description: fields['System.Description'] || '',
+          estimate: Math.max(4, Math.ceil((fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] || 2) * 4)),
+          assignee: fields['System.AssignedTo']?.displayName || fields['System.AssignedTo'] || 'Unassigned',
+          priority: mapPriority(String(fields['Microsoft.VSTS.Common.Priority'] || 'medium')),
+          status: mapStatus(fields['System.State'] || 'New'),
+          category: epicName,
+          tags: [`azure-devops:${item.id ?? idx}`],
+        });
+      }
+
+      return {
+        success: true,
+        source: 'azure-devops',
+        features,
+        epics: Array.from(epics.values()),
+        milestones: [],
+        errors: [],
+        warnings: [],
+        stats: {
+          totalItems: items.length,
+          featuresImported: features.length,
+          epicsImported: epics.size,
+          milestonesImported: 0,
+          skipped: 0,
+          errors: 0,
+        },
+      };
+    },
+  },
+  feishu: {
+    source: 'feishu',
+    name: 'Feishu Importer',
+    description: 'Import tasks from Feishu table JSON export',
+    async validate(content) {
+      const items = parseJsonList(content, ['items', 'records', 'data']);
+      if (!items) {
+        return { valid: false, errors: ['Invalid JSON or missing records array'] };
+      }
+      if (items.length === 0) {
+        return { valid: false, errors: ['No records found'] };
+      }
+      return { valid: true, errors: [] };
+    },
+    async import(options) {
+      const items = parseJsonList(options.content, ['items', 'records', 'data']) ?? [];
+      const features: any[] = [];
+      const epics = new Map<string, any>();
+
+      let idx = 1;
+      for (const row of items) {
+        const category = row.group || row.epic || row.project || 'Feishu';
+        if (!epics.has(category)) {
+          epics.set(category, {
+            id: String(category).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            name: category,
+            description: '',
+            originalId: category,
+          });
+        }
+
+        features.push({
+          id: `feat-${String(idx++).padStart(3, '0')}`,
+          name: row.title || row.name || `Feishu Task ${idx}`,
+          description: row.description || '',
+          estimate: Number(row.estimateHours || row.estimate || 8),
+          assignee: row.owner || row.assignee || 'Unassigned',
+          priority: mapPriority(row.priority || 'medium'),
+          status: mapStatus(row.status || 'todo'),
+          category,
+          tags: [`feishu:${row.id || idx}`],
+        });
+      }
+
+      return {
+        success: true,
+        source: 'feishu',
+        features,
+        epics: Array.from(epics.values()),
+        milestones: [],
+        errors: [],
+        warnings: [],
+        stats: {
+          totalItems: items.length,
+          featuresImported: features.length,
+          epicsImported: epics.size,
+          milestonesImported: 0,
+          skipped: 0,
+          errors: 0,
+        },
+      };
+    },
+  },
+  'tencent-docs': {
+    source: 'tencent-docs',
+    name: 'Tencent Docs Importer',
+    description: 'Import tasks from Tencent Docs CSV or JSON export',
+    async validate(content) {
+      const jsonItems = parseJsonList(content, ['items', 'records', 'data']);
+      if (jsonItems && jsonItems.length > 0) {
+        return { valid: true, errors: [] };
+      }
+
+      const rows = parseCsvRows(content);
+      if (rows.length < 2) {
+        return { valid: false, errors: ['Invalid CSV format or empty data'] };
+      }
+      return { valid: true, errors: [] };
+    },
+    async import(options) {
+      const jsonItems = parseJsonList(options.content, ['items', 'records', 'data']);
+      let rows: Array<Record<string, string>> = [];
+
+      if (jsonItems) {
+        rows = jsonItems.map((item) => ({
+          title: item.title || item.name || '',
+          description: item.description || '',
+          assignee: item.assignee || item.owner || '',
+          status: item.status || '',
+          priority: item.priority || '',
+          estimate: String(item.estimate || item.estimateHours || 8),
+          epic: item.epic || item.group || 'Tencent Docs',
+          id: String(item.id || ''),
+        }));
+      } else {
+        const csvRows = parseCsvRows(options.content);
+        const headers = csvRows[0].map((header) => header.toLowerCase());
+        rows = csvRows.slice(1).map((values) => {
+          const row: Record<string, string> = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] ?? '';
+          });
+          return row;
+        });
+      }
+
+      const features: any[] = [];
+      const epics = new Map<string, any>();
+
+      rows.forEach((row, index) => {
+        const epic = row.epic || row.project || 'Tencent Docs';
+        if (!epics.has(epic)) {
+          epics.set(epic, {
+            id: epic.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            name: epic,
+            description: '',
+            originalId: epic,
+          });
+        }
+
+        features.push({
+          id: `feat-${String(index + 1).padStart(3, '0')}`,
+          name: row.title || row.name || `Tencent Task ${index + 1}`,
+          description: row.description || '',
+          estimate: Number(row.estimate || 8),
+          assignee: row.assignee || row.owner || 'Unassigned',
+          priority: mapPriority(row.priority || 'medium'),
+          status: mapStatus(row.status || 'todo'),
+          category: epic,
+          tags: [`tencent-docs:${row.id || index + 1}`],
+        });
+      });
+
+      return {
+        success: true,
+        source: 'tencent-docs',
+        features,
+        epics: Array.from(epics.values()),
+        milestones: [],
+        errors: [],
+        warnings: [],
+        stats: {
+          totalItems: rows.length,
+          featuresImported: features.length,
+          epicsImported: epics.size,
+          milestonesImported: 0,
+          skipped: 0,
+          errors: 0,
+        },
+      };
+    },
+  },
 };
+
+function parseJsonList(content: string, candidates: string[]): any[] | null {
+  try {
+    const data = JSON.parse(content);
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    for (const candidate of candidates) {
+      const value = (data as Record<string, unknown>)[candidate];
+      if (Array.isArray(value)) {
+        return value as any[];
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseCsvRows(content: string): string[][] {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(',').map((part) => part.trim().replace(/^"|"$/g, '')));
+}
+
+function toFeatureStatus(status: string): FeatureStatus {
+  const normalized = mapStatus(status);
+  if (normalized === 'in-progress') return 'in-progress';
+  if (normalized === 'done') return 'done';
+  return 'todo';
+}
+
+function toPriority(priority: string): Priority {
+  const normalized = mapPriority(priority);
+  if (normalized === 'critical' || normalized === 'high' || normalized === 'low') {
+    return normalized;
+  }
+  return 'medium';
+}
+
+function toEpicId(raw: string): string {
+  if (/^EPIC-\d+$/i.test(raw)) {
+    return raw.toUpperCase();
+  }
+  return 'EPIC-PLAN';
+}
+
+function toSkills(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .map((tag) => String(tag).trim())
+    .filter((tag) => tag.length > 0 && !tag.includes(':'))
+    .slice(0, 5);
+}
+
+function allocateFeatureId(usedIds: Set<string>): string {
+  let counter = 1;
+  while (usedIds.has(`FEAT-${String(counter).padStart(3, '0')}`)) {
+    counter += 1;
+  }
+  const id = `FEAT-${String(counter).padStart(3, '0')}`;
+  usedIds.add(id);
+  return id;
+}
 
 function mapPriority(p: string): string {
   const lower = p.toLowerCase();
@@ -375,7 +658,7 @@ function isValidSource(source: string): source is ImportSource {
  *           type: boolean
  *         source:
  *           type: string
- *           enum: [jira, linear, github]
+ *           enum: [jira, linear, github, azure-devops, feishu, tencent-docs]
  *         stats:
  *           type: object
  *           properties:
@@ -446,7 +729,7 @@ function isValidSource(source: string): source is ImportSource {
  * /api/import/sources:
  *   get:
  *     summary: List available import sources
- *     description: Returns list of supported import sources (jira, linear, github)
+ *     description: Returns list of supported import sources
  *     tags: [Import]
  *     responses:
  *       200:
@@ -609,6 +892,18 @@ importRoutes.post('/github', upload.single('file'), async (req: Request, res: Re
   await handleImport('github', req, res, next);
 });
 
+importRoutes.post('/azure-devops', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+  await handleImport('azure-devops', req, res, next);
+});
+
+importRoutes.post('/feishu', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+  await handleImport('feishu', req, res, next);
+});
+
+importRoutes.post('/tencent-docs', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+  await handleImport('tencent-docs', req, res, next);
+});
+
 /**
  * @openapi
  * /api/import/validate:
@@ -628,7 +923,7 @@ importRoutes.post('/github', upload.single('file'), async (req: Request, res: Re
  *                 format: binary
  *               source:
  *                 type: string
- *                 enum: [jira, linear, github]
+ *                 enum: [jira, linear, github, azure-devops, feishu, tencent-docs]
  *             required:
  *               - file
  *               - source
@@ -660,7 +955,7 @@ importRoutes.post('/validate', upload.single('file'), async (req: Request, res: 
     const source = req.body.source;
     if (!source || !isValidSource(source)) {
       throw new ValidationError({ 
-        detail: 'Invalid or missing source parameter. Must be one of: jira, linear, github', 
+        detail: 'Invalid or missing source parameter. Must be one of: jira, linear, github, azure-devops, feishu, tencent-docs',
         instance: req.originalUrl 
       });
     }
@@ -710,14 +1005,54 @@ async function handleImport(source: ImportSource, req: Request, res: Response, n
       merge,
     });
 
+    let persisted = { created: 0, updated: 0 };
+    if (!dryRun) {
+      const existingFeatures = await getFeatures();
+      const usedIds = new Set(existingFeatures.map((feature) => feature.id.toUpperCase()));
+      const existingByTitle = new Map(existingFeatures.map((feature) => [feature.title.trim().toLowerCase(), feature]));
+
+      for (const row of result.features) {
+        const rowTitle = String(row.name || row.title || '').trim();
+        const matched = merge ? existingByTitle.get(rowTitle.toLowerCase()) : undefined;
+        const featureId = matched?.id ?? (/^FEAT-\d+$/i.test(String(row.id || '')) ? String(row.id).toUpperCase() : allocateFeatureId(usedIds));
+        usedIds.add(featureId);
+
+        const feature: Feature = {
+          id: featureId,
+          epic: toEpicId(String(row.category || row.epic || 'EPIC-PLAN')),
+          title: rowTitle || featureId,
+          description: String(row.description || ''),
+          status: toFeatureStatus(String(row.status || 'todo')),
+          priority: toPriority(String(row.priority || 'medium')),
+          assignee: String(row.assignee || ''),
+          estimate: Number(row.estimate || 8),
+          actual: Number(row.actual || 0),
+          skillsRequired: toSkills(row.tags),
+          dependencies: [],
+        };
+
+        await writeFeatureFile(feature);
+        if (matched) {
+          persisted.updated += 1;
+        } else {
+          persisted.created += 1;
+        }
+      }
+    }
+
     logger.info({ 
       source, 
       success: result.success, 
       features: result.stats.featuresImported,
-      errors: result.stats.errors 
+      errors: result.stats.errors,
+      dryRun,
+      persisted,
     }, 'Import completed');
 
-    res.json(result);
+    res.json({
+      ...result,
+      persisted,
+    });
   } catch (error) {
     if (error instanceof ValidationError) {
       return next(error);

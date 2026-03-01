@@ -12,8 +12,10 @@ import { csvRoutes } from './routes/csv';
 import { timelineRoutes } from './routes/timeline';
 import { milestoneRoutes } from './routes/milestones';
 import { changelogRoutes } from './routes/changelog';
-import statsRoutes from './routes/stats.js';
+import statsRoutes from './routes/stats';
 import { importRoutes } from './routes/import';
+import { workflowRoutes } from './routes/workflows';
+import { integrationRoutes } from './routes/integrations';
 import { authRoutes } from './auth';
 import { logger } from './utils/logger';
 import { requestLogger } from './middleware/requestLogger';
@@ -71,6 +73,8 @@ app.use('/api/milestones', milestoneRoutes);
 app.use('/api/changelog', changelogRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/integrations', integrationRoutes);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {

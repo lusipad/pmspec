@@ -18,8 +18,11 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "quickPlan": "Quick Plan",
     "kanban": "Kanban",
     "gantt": "Gantt",
+    "integrations": "Integrations",
+    "more": "More",
     "features": "Features",
     "epics": "Epics",
     "milestones": "Milestones",
@@ -121,6 +124,113 @@
     "importing": "Importing...",
     "success": "Import successful",
     "failed": "Import failed"
+  },
+  "planBuilder": {
+    "title": "Quick Plan Wizard",
+    "description": "Finish goal definition, constraints, and AI scheduling in 3 steps. A feature-level Gantt plan is generated automatically.",
+    "stepBadge": "Step {{value}}",
+    "step1Title": "Step 1 · Goal",
+    "step2Title": "Step 2 · Constraints",
+    "step3Title": "Step 3 · Plan Confirmation",
+    "goalPlaceholder": "For example: Deliver the new customer portal in 6 weeks with login, billing, and ticketing capabilities.",
+    "startDate": "Start Date",
+    "targetDate": "Target Date",
+    "dailyCapacity": "Daily Capacity (hours)",
+    "constraint": "Constraint",
+    "constraintPlaceholder": "For example: Identity authentication must be delivered before core modules.",
+    "addConstraint": "Add",
+    "generatedFeatures": "{{count}} feature schedules generated.",
+    "impactTitle": "Impact Analysis",
+    "impactSummary": "{{delayedCount}} delayed features, {{overloadedCount}} overloaded assignees, {{riskCount}} dependency risks.",
+    "confirmAndApply": "Confirm and Apply",
+    "rebalanceBalanced": "AI Rebalance (Balanced)",
+    "rebalanceConservative": "Conservative Rebalance",
+    "rebalanceAggressive": "Aggressive Rebalance",
+    "previousStep": "Previous",
+    "generatePlan": "Generate Plan",
+    "nextStep": "Next",
+    "restart": "Start Over",
+    "confirmSuccess": "Plan confirmed and applied.",
+    "generateSuccess": "Plan draft generated successfully.",
+    "rebalanceSuccess": "Plan rebalanced successfully.",
+    "confirmed": "Applied",
+    "confirmDialogTitle": "Confirm Plan Apply",
+    "confirmDialogDescription": "This will sync {{count}} planned features into project data. Continue?",
+    "confirmDialogAction": "Apply Plan",
+    "quickActionsTitle": "Recommended next actions",
+    "quickActions": {
+      "gantt": "View Gantt",
+      "kanban": "Open Kanban",
+      "features": "Go to Features"
+    },
+    "unsavedWarning": "You have unsaved plan changes. Leave this page anyway?",
+    "hoursSuffix": "h",
+    "featureStatus": {
+      "todo": "To Do",
+      "in-progress": "In Progress",
+      "done": "Done"
+    },
+    "table": {
+      "feature": "Feature",
+      "title": "Title",
+      "epic": "Epic",
+      "assignee": "Assignee",
+      "estimate": "Estimate",
+      "start": "Start",
+      "end": "End",
+      "status": "Status"
+    },
+    "errors": {
+      "generateFailed": "Failed to generate plan",
+      "confirmFailed": "Failed to confirm plan",
+      "rebalanceFailed": "Failed to rebalance plan"
+    },
+    "validation": {
+      "goalRequired": "Please provide a goal statement.",
+      "goalTooShort": "Goal statement must be at least 6 characters.",
+      "invalidDate": "Please provide valid start and target dates.",
+      "dateOrder": "Target date cannot be earlier than start date.",
+      "capacityRange": "Daily capacity must be between 1 and 24 hours."
+    }
+  },
+  "integrations": {
+    "loading": "Loading integrations...",
+    "title": "Integrations",
+    "description": "Manage Azure DevOps, Feishu, Tencent Docs, and other platform connections in one place.",
+    "importFile": "Import File",
+    "importDone": "Import complete: {{connectorId}} created {{created}}, updated {{updated}}",
+    "syncLog": "Sync Log",
+    "noSyncRecords": "No sync records yet.",
+    "status": {
+      "connected": "Connected",
+      "fileIntegration": "File Integration"
+    },
+    "category": {
+      "engineering": "Engineering",
+      "collaboration": "Collaboration"
+    },
+    "direction": {
+      "import": "Import",
+      "export": "Export"
+    },
+    "syncStatus": {
+      "pending": "Pending",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "table": {
+      "connector": "Connector",
+      "direction": "Direction",
+      "status": "Status",
+      "started": "Started",
+      "message": "Message"
+    },
+    "errors": {
+      "loadFailed": "Failed to load integrations",
+      "selectFile": "Please select a file to import",
+      "importFailed": "Import failed"
+    }
   },
   "status": {
     "draft": "Draft",

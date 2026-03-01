@@ -35,12 +35,12 @@ export function PriorityBadge({ priority = 'medium', size = 'medium' }: Priority
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded uppercase ${sizeClasses[size]}`}
+      className={`inline-flex items-center font-medium rounded ${sizeClasses[size]}`}
       style={{
         backgroundColor: colors.badgeBg,
         color: colors.badgeText,
       }}
-      title={`Priority: ${label}`}
+      title={`优先级：${label}`}
     >
       {label}
     </span>

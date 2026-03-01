@@ -82,6 +82,27 @@ describe('Feature Routes', () => {
       expect(response.body.status).toBe(500);
       expect(response.body.detail).toBe('Failed to fetch features');
     });
+
+    it('should support filter, sort, and pagination', async () => {
+      mockGetFeatures.mockResolvedValue([
+        { id: 'FEAT-001', epic: 'EPIC-001', title: 'A', status: 'todo', priority: 'high', assignee: 'Alice', estimate: 8, actual: 0, skillsRequired: [] },
+        { id: 'FEAT-002', epic: 'EPIC-001', title: 'B', status: 'todo', priority: 'critical', assignee: 'Alice', estimate: 12, actual: 0, skillsRequired: [] },
+        { id: 'FEAT-003', epic: 'EPIC-002', title: 'C', status: 'done', priority: 'low', assignee: 'Bob', estimate: 4, actual: 4, skillsRequired: [] },
+      ] as any);
+
+      const app = createApp();
+      const response = await request(app)
+        .get('/api/features')
+        .query({ status: 'todo', sortBy: 'priority', sortOrder: 'asc', page: 1, pageSize: 1 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(2);
+      expect(response.body.page).toBe(1);
+      expect(response.body.pageSize).toBe(1);
+      expect(response.body.totalPages).toBe(2);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].id).toBe('FEAT-002');
+    });
   });
 
   describe('GET /api/features/:id', () => {
@@ -256,6 +277,106 @@ describe('Feature Routes', () => {
       expect(response.body.type).toBe('https://pmspec.io/errors/not-found');
       expect(response.body.title).toBe('Resource Not Found');
       expect(response.body.detail).toContain('not found');
+    });
+  });
+
+  describe('PATCH /api/features/:id', () => {
+    it('should patch feature and return 200 status', async () => {
+      const existingFeature = {
+        id: 'FEAT-001',
+        epic: 'EPIC-001',
+        title: 'Feature 1',
+        status: 'todo',
+        priority: 'medium',
+        assignee: 'Alice',
+        estimate: 8,
+        actual: 0,
+        skillsRequired: [],
+      };
+      mockGetFeatureById.mockResolvedValue(existingFeature as any);
+      mockWriteFeatureFile.mockResolvedValue(undefined);
+
+      const app = createApp();
+      const response = await request(app)
+        .patch('/api/features/FEAT-001')
+        .send({ priority: 'high', assignee: 'Bob' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.priority).toBe('high');
+      expect(response.body.assignee).toBe('Bob');
+      expect(mockWriteFeatureFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reject invalid patch payload', async () => {
+      const existingFeature = {
+        id: 'FEAT-001',
+        epic: 'EPIC-001',
+        title: 'Feature 1',
+        status: 'todo',
+        priority: 'medium',
+        assignee: 'Alice',
+        estimate: 8,
+        actual: 0,
+        skillsRequired: [],
+      };
+      mockGetFeatureById.mockResolvedValue(existingFeature as any);
+
+      const app = createApp();
+      const response = await request(app)
+        .patch('/api/features/FEAT-001')
+        .send({ priority: 'urgent' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.type).toBe('https://pmspec.io/errors/validation-error');
+    });
+  });
+
+  describe('POST /api/features/batch', () => {
+    it('should batch update features and return summary', async () => {
+      const featureA = {
+        id: 'FEAT-001',
+        epic: 'EPIC-001',
+        title: 'Feature 1',
+        status: 'todo',
+        priority: 'medium',
+        assignee: 'Alice',
+        estimate: 8,
+        actual: 0,
+        skillsRequired: [],
+      };
+      const featureB = {
+        id: 'FEAT-002',
+        epic: 'EPIC-001',
+        title: 'Feature 2',
+        status: 'todo',
+        priority: 'medium',
+        assignee: 'Alice',
+        estimate: 8,
+        actual: 0,
+        skillsRequired: [],
+      };
+      mockGetFeatureById.mockResolvedValueOnce(featureA as any).mockResolvedValueOnce(featureB as any);
+      mockWriteFeatureFile.mockResolvedValue(undefined);
+
+      const app = createApp();
+      const response = await request(app)
+        .post('/api/features/batch')
+        .send({ ids: ['FEAT-001', 'FEAT-002'], updates: { status: 'in-progress' } });
+
+      expect(response.status).toBe(200);
+      expect(response.body.updated).toBe(2);
+      expect(response.body.failed).toEqual([]);
+      expect(mockWriteFeatureFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('should reject empty batch request', async () => {
+      const app = createApp();
+      const response = await request(app)
+        .post('/api/features/batch')
+        .send({ ids: [], updates: {} });
+
+      expect(response.status).toBe(400);
+      expect(response.body.type).toBe('https://pmspec.io/errors/validation-error');
     });
   });
 

@@ -87,7 +87,7 @@ export function FeatureCard({ feature }: FeatureCardProps) {
       <div className="flex items-center justify-between mb-3 text-sm">
         <div className="flex items-center text-gray-700">
           <span className="mr-1">👤</span>
-          <span>{feature.assignee || 'Unassigned'}</span>
+          <span>{feature.assignee || '未分配'}</span>
         </div>
         <div className="text-gray-600">
           <span className={isOverBudget ? 'text-red-600 font-semibold' : ''}>
@@ -110,7 +110,7 @@ export function FeatureCard({ feature }: FeatureCardProps) {
           </div>
           {isOverBudget && (
             <div className="text-xs text-red-600 mt-1">
-              Over budget: +{feature.actual - feature.estimate}h
+              超出预估：+{feature.actual - feature.estimate}h
             </div>
           )}
         </div>
@@ -120,7 +120,7 @@ export function FeatureCard({ feature }: FeatureCardProps) {
       {showBreakdown && (
         <div className="mb-3 bg-orange-50 border border-orange-200 rounded p-2">
           <div className="text-xs text-orange-800 font-medium">
-            ⚠️ Consider breaking down this large task
+            ⚠️ 建议拆分该大型任务
           </div>
         </div>
       )}

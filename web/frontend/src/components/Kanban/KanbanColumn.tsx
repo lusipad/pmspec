@@ -68,7 +68,7 @@ export function KanbanColumn({ title, status, features, count }: KanbanColumnPro
           ) : (
             <div className="text-center py-12 text-gray-400">
               <div className="text-4xl mb-2">📋</div>
-              <div>No features</div>
+              <div>暂无功能项</div>
             </div>
           )}
         </SortableContext>

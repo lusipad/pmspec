@@ -24,6 +24,12 @@ export function calculateTimeline(
 
   // Default: 8 hours per day, 5 days per week
   const HOURS_PER_DAY = 8;
+  const knownFeatureIds = new Set(features.map((feature) => feature.id));
+  const knownEpicIds = new Set(epics.map((epic) => epic.id));
+
+  function toIsoDate(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
 
   function hoursToDate(startDate: Date, hours: number): Date {
     const days = Math.ceil(hours / HOURS_PER_DAY);
@@ -41,6 +47,46 @@ export function calculateTimeline(
     }
 
     return result;
+  }
+
+  function resolveDependencies(feature: Feature, fallbackDependencyId?: string): string[] {
+    const explicitDependencies = (feature.dependencies ?? [])
+      .filter((dependency) => dependency.type === 'blocks')
+      .map((dependency) => dependency.featureId)
+      .filter((dependencyId) => dependencyId !== feature.id && knownFeatureIds.has(dependencyId));
+
+    if (explicitDependencies.length > 0) {
+      return Array.from(new Set(explicitDependencies));
+    }
+
+    return fallbackDependencyId ? [fallbackDependencyId] : [];
+  }
+
+  function scheduleFeaturesSequentially(group: Feature[], groupStartDate: Date): Date {
+    let featureDate = new Date(groupStartDate);
+    const sortedFeatures = [...group].sort((a, b) => a.id.localeCompare(b.id));
+
+    sortedFeatures.forEach((feature, index) => {
+      const featureStart = new Date(featureDate);
+      const featureEnd = hoursToDate(featureStart, feature.estimate || 8);
+      const fallbackDependencyId = index > 0 ? sortedFeatures[index - 1].id : undefined;
+
+      tasks.push({
+        id: feature.id,
+        name: feature.title,
+        type: 'feature',
+        start: toIsoDate(featureStart),
+        end: toIsoDate(featureEnd),
+        progress: feature.estimate > 0 ? (feature.actual / feature.estimate) * 100 : 0,
+        dependencies: resolveDependencies(feature, fallbackDependencyId),
+        assignee: feature.assignee,
+        status: feature.status,
+      });
+
+      featureDate = new Date(featureEnd);
+    });
+
+    return featureDate;
   }
 
   // Sort epics by ID
@@ -61,8 +107,8 @@ export function calculateTimeline(
         id: epic.id,
         name: epic.title,
         type: 'epic',
-        start: epicStart.toISOString().split('T')[0],
-        end: epicEnd.toISOString().split('T')[0],
+        start: toIsoDate(epicStart),
+        end: toIsoDate(epicEnd),
         progress: epic.estimate > 0 ? (epic.actual / epic.estimate) * 100 : 0,
         dependencies: [],
         status: epic.status,
@@ -72,38 +118,15 @@ export function calculateTimeline(
     } else {
       // Epic with features
       const epicStart = new Date(currentDate);
-      let featureDate = new Date(currentDate);
-
-      // Sort features by ID
-      const sortedFeatures = [...epicFeatures].sort((a, b) => a.id.localeCompare(b.id));
-
-      // Process features sequentially
-      sortedFeatures.forEach((feature, index) => {
-        const featureStart = new Date(featureDate);
-        const featureEnd = hoursToDate(featureStart, feature.estimate || 8);
-
-        tasks.push({
-          id: feature.id,
-          name: feature.title,
-          type: 'feature',
-          start: featureStart.toISOString().split('T')[0],
-          end: featureEnd.toISOString().split('T')[0],
-          progress: feature.estimate > 0 ? (feature.actual / feature.estimate) * 100 : 0,
-          dependencies: index > 0 ? [sortedFeatures[index - 1].id] : [],
-          assignee: feature.assignee,
-          status: feature.status,
-        });
-
-        featureDate = new Date(featureEnd);
-      });
+      const featureDate = scheduleFeaturesSequentially(epicFeatures, currentDate);
 
       // Add epic task spanning all features
       tasks.push({
         id: epic.id,
         name: epic.title,
         type: 'epic',
-        start: epicStart.toISOString().split('T')[0],
-        end: featureDate.toISOString().split('T')[0],
+        start: toIsoDate(epicStart),
+        end: toIsoDate(featureDate),
         progress: epic.estimate > 0 ? (epic.actual / epic.estimate) * 100 : 0,
         dependencies: [],
         status: epic.status,
@@ -112,6 +135,12 @@ export function calculateTimeline(
       currentDate = new Date(featureDate);
     }
   });
+
+  // Include features that do not belong to a known epic
+  const orphanFeatures = features.filter((feature) => !feature.epic || !knownEpicIds.has(feature.epic));
+  if (orphanFeatures.length > 0) {
+    scheduleFeaturesSequentially(orphanFeatures, currentDate);
+  }
 
   return tasks;
 }

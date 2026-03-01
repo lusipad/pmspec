@@ -324,3 +324,100 @@ export interface KanbanDragEvent {
   targetColumn: FeatureStatus;
   newIndex: number;
 }
+
+// ============================================================================
+// Workflow Planning Types
+// ============================================================================
+
+/** Scheduling strategy for rebalance */
+export type RebalanceStrategy = 'conservative' | 'balanced' | 'aggressive';
+
+/** Planning brief input for workflow generation */
+export interface PlanningBrief {
+  goal: string;
+  startDate: string;
+  targetDate: string;
+  teamCapacityHoursPerDay: number;
+  constraints: string[];
+}
+
+/** Planned schedule entry for a feature */
+export interface FeatureSchedule {
+  featureId: string;
+  title: string;
+  epic: string;
+  estimate: number;
+  start: string;
+  end: string;
+  assignee: string;
+  status: FeatureStatus;
+  dependencies: string[];
+}
+
+/** Plan draft generated from brief */
+export interface PlanDraft {
+  id: string;
+  brief: PlanningBrief;
+  generatedAt: string;
+  features: FeatureSchedule[];
+  warnings: string[];
+}
+
+/** Impact analysis after plan edits */
+export interface PlanImpact {
+  delayedFeatures: string[];
+  overloadedAssignees: Array<{
+    assignee: string;
+    assignedHours: number;
+    capacityHours: number;
+  }>;
+  dependencyRisks: Array<{
+    featureId: string;
+    blockedBy: string[];
+  }>;
+}
+
+// ============================================================================
+// Integration Types
+// ============================================================================
+
+/** Supported external connector ids */
+export type ConnectorId =
+  | 'azure-devops'
+  | 'jira'
+  | 'linear'
+  | 'github'
+  | 'feishu'
+  | 'tencent-docs';
+
+/** Integration connector metadata */
+export interface ConnectorInfo {
+  id: ConnectorId;
+  name: string;
+  category: 'engineering' | 'collaboration';
+  connected: boolean;
+  capabilities: Array<'import' | 'export'>;
+}
+
+/** Sync job status */
+export interface SyncJob {
+  id: string;
+  connectorId: ConnectorId;
+  direction: 'import' | 'export';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startedAt: string;
+  finishedAt?: string;
+  message?: string;
+}
+
+/** Conflict record generated during sync */
+export interface ConflictRecord {
+  id: string;
+  connectorId: ConnectorId;
+  featureId: string;
+  field: 'status' | 'assignee' | 'start' | 'end';
+  pmspecValue: string;
+  remoteValue: string;
+  resolution: 'pmspec' | 'remote' | 'manual';
+  createdAt: string;
+}

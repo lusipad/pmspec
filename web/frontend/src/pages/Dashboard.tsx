@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
 import {
@@ -40,12 +41,11 @@ interface OverviewStats {
     completionRate: number;
   };
   team: {
-    total: number;
+    total?: number;
+    totalMembers?: number;
     averageUtilization: number;
-    assignedMembers: number;
+    assignedMembers?: number;
   };
-  totalEstimate: number;
-  totalActual: number;
 }
 
 interface TrendData {
@@ -73,11 +73,9 @@ interface TeamWorkloadResponse {
 interface EpicProgressItem {
   id: string;
   title: string;
-  status: string;
-  featureCount: number;
+  status: 'planning' | 'in-progress' | 'completed' | string;
   totalFeatures: number;
   completedFeatures: number;
-  progress: number;
   progressPercent: number;
   hoursProgress: number;
 }
@@ -90,9 +88,56 @@ const COLORS = {
   todo: '#94a3b8',
   'in-progress': '#3b82f6',
   done: '#22c55e',
-  planning: '#f59e0b',
-  completed: '#10b981',
 };
+
+function KpiCard({
+  title,
+  value,
+  subValue,
+  accentClass,
+  icon,
+}: {
+  title: string;
+  value: string;
+  subValue: string;
+  accentClass: string;
+  icon: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#1C1C1E]">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{title}</p>
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">{value}</p>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{subValue}</p>
+        </div>
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg ${accentClass}`}
+          aria-hidden
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-28 animate-pulse rounded-2xl bg-black/5 dark:bg-white/5" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((item) => (
+          <div key={item} className="h-32 animate-pulse rounded-2xl bg-black/5 dark:bg-white/5" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="h-80 animate-pulse rounded-2xl bg-black/5 dark:bg-white/5" />
+        <div className="h-80 animate-pulse rounded-2xl bg-black/5 dark:bg-white/5" />
+      </div>
+    </div>
+  );
+}
 
 export function Dashboard() {
   return (
@@ -124,320 +169,221 @@ function DashboardContent() {
   });
 
   if (overviewLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading dashboard...</div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const stats = overview;
+  const completionRate = Math.max(0, Math.min(100, stats?.hours.completionRate ?? 0));
+  const teamMemberCount = stats?.team.totalMembers ?? stats?.team.total ?? 0;
+  const assignedMembers = stats?.team.assignedMembers ?? teamMemberCount;
 
-  // Prepare pie chart data
   const featureStatusData = [
     { name: '待办', value: stats?.features.byStatus.todo || 0, color: COLORS.todo },
     { name: '进行中', value: stats?.features.byStatus['in-progress'] || 0, color: COLORS['in-progress'] },
     { name: '已完成', value: stats?.features.byStatus.done || 0, color: COLORS.done },
   ];
 
+  const epicStatusLabel: Record<string, string> = {
+    planning: '规划中',
+    'in-progress': '进行中',
+    completed: '已完成',
+  };
+
+  const epicStatusClass: Record<string, string> = {
+    planning: 'bg-amber-100 text-amber-800',
+    'in-progress': 'bg-blue-100 text-blue-800',
+    completed: 'bg-green-100 text-green-800',
+  };
+
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
-
-      {/* Overview Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Features Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">总特性数</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
-                {stats?.features.total || 0}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-            </div>
+      <section className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-slate-50 p-6 shadow-sm dark:border-blue-500/20 dark:from-[#162131] dark:to-[#1B2434]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">项目驾驶舱</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              聚焦交付进度、工时健康度与团队负载，帮助你快速做出排期决策。
+            </p>
           </div>
-          <div className="mt-4 flex items-center text-sm">
-            <span className="text-green-600 font-medium">
-              {stats?.features.byStatus.done || 0} 已完成
-            </span>
-            <span className="text-gray-500 ml-2">
-              / {stats?.features.byStatus['in-progress'] || 0} 进行中
-            </span>
+          <div className="flex flex-wrap gap-2">
+              <Link
+                to="/plan/new"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                快速生成计划
+              </Link>
+            <Link
+              to="/features"
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:bg-[#1F2937] dark:text-gray-200 dark:hover:bg-[#273344]"
+            >
+              管理功能列表
+            </Link>
           </div>
         </div>
+      </section>
 
-        {/* Completion Rate Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">完成率</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
-                {stats?.hours.completionRate || 0}%
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-          </div>
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          title="功能总量"
+          value={`${stats?.features.total ?? 0}`}
+          subValue={`已完成 ${stats?.features.byStatus.done ?? 0} · 进行中 ${stats?.features.byStatus['in-progress'] ?? 0}`}
+          accentClass="bg-blue-100 text-blue-700"
+          icon="📌"
+        />
+        <KpiCard
+          title="交付完成率"
+          value={`${completionRate.toFixed(0)}%`}
+          subValue={`总估时 ${stats?.hours.estimated ?? 0}h · 实际 ${stats?.hours.actual ?? 0}h`}
+          accentClass="bg-green-100 text-green-700"
+          icon="✅"
+        />
+        <KpiCard
+          title="团队利用率"
+          value={`${stats?.team.averageUtilization ?? 0}%`}
+          subValue={`在岗 ${assignedMembers} / ${teamMemberCount} 人`}
+          accentClass="bg-orange-100 text-orange-700"
+          icon="👥"
+        />
+        <KpiCard
+          title="史诗总量"
+          value={`${stats?.epics.total ?? 0}`}
+          subValue={`进行中 ${stats?.epics.byStatus['in-progress'] ?? 0} · 已完成 ${stats?.epics.byStatus.completed ?? 0}`}
+          accentClass="bg-purple-100 text-purple-700"
+          icon="🧭"
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#1C1C1E]">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">功能状态分布</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">按当前状态查看待办积压与交付节奏</p>
           <div className="mt-4">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-green-600 h-2 rounded-full transition-all"
-                style={{ width: `${stats?.hours.completionRate || 0}%` }}
-              />
-            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={featureStatusData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }: { name?: string; percent?: number }) =>
+                    `${name || ''} ${percent ? (percent * 100).toFixed(0) : '0'}%`
+                  }
+                  outerRadius={82}
+                  dataKey="value"
+                >
+                  {featureStatusData.map((entry, index) => (
+                    <Cell key={`status-cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Hours Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">估算工时</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
-                {stats?.hours.estimated || 0}h
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-purple-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-sm">
-            <span className="text-purple-600 font-medium">
-              {stats?.hours.actual || 0}h 实际
-            </span>
+        <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#1C1C1E]">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">最近趋势（7天）</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">追踪完成、进行中与待办任务的变化</p>
+          <div className="mt-4 h-[280px]">
+            {trendsLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-gray-400">加载中...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trends?.trends || []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="completed" stroke={COLORS.done} name="已完成" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="inProgress"
+                    stroke={COLORS['in-progress']}
+                    name="进行中"
+                    strokeWidth={2}
+                  />
+                  <Line type="monotone" dataKey="todo" stroke={COLORS.todo} name="待办" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
+      </section>
 
-        {/* Team Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">团队利用率</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
-                {stats?.team.averageUtilization || 0}%
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-orange-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-sm">
-            <span className="text-orange-600 font-medium">
-              {stats?.team.total || 0} 成员
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Feature Status Pie Chart */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">特性状态分布</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={featureStatusData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} ${percent ? (percent * 100).toFixed(0) : '0'}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {featureStatusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Trends Line Chart */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">趋势（最近 7 天）</h3>
-          {trendsLoading ? (
-            <div className="h-[300px] flex items-center justify-center text-gray-400">
-              加载中...
-            </div>
+      <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#1C1C1E]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white">团队负载分布</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">观察容量、已分配与已完成工时，快速识别过载成员</p>
+        <div className="mt-4 h-[300px]">
+          {teamLoading ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-400">加载中...</div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={trends?.trends || []}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={teamWorkload?.workload || []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
+                <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="completed"
-                  stroke={COLORS.done}
-                  name="已完成"
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="inProgress"
-                  stroke={COLORS['in-progress']}
-                  name="进行中"
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="todo"
-                  stroke={COLORS.todo}
-                  name="待办"
-                  strokeWidth={2}
-                />
-              </LineChart>
+                <Bar dataKey="capacity" fill="#d1d5db" name="容量" />
+                <Bar dataKey="assigned" fill="#3b82f6" name="已分配" />
+                <Bar dataKey="completed" fill="#22c55e" name="已完成" />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Team Workload Bar Chart */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">团队工作负载</h3>
-        {teamLoading ? (
-          <div className="h-[300px] flex items-center justify-center text-gray-400">
-            加载中...
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={teamWorkload?.workload || []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="capacity" fill="#e5e7eb" name="容量" />
-              <Bar dataKey="assigned" fill="#3b82f6" name="已分配" />
-              <Bar dataKey="completed" fill="#22c55e" name="已完成" />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Epic Progress Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Epic 进度</h3>
+      <section className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-[#1C1C1E]">
+        <div className="border-b border-black/5 px-5 py-4 dark:border-white/10">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">史诗进度</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">按史诗维度审视功能完成率与工时进度</p>
         </div>
         {epicLoading ? (
-          <div className="p-6 text-center text-gray-400">加载中...</div>
+          <div className="p-6 text-center text-sm text-gray-400">加载中...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full">
+              <thead className="bg-gray-50/80 dark:bg-white/5">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Epic
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    状态
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    特性数
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    进度
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    工时进度
-                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">史诗</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">状态</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">功能进度</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">完成率</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">工时进度</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
                 {(epicProgress?.epics || []).map((epic) => (
-                  <tr key={epic.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{epic.title}</div>
-                      <div className="text-sm text-gray-500">{epic.id}</div>
+                  <tr key={epic.id} className="hover:bg-gray-50/60 dark:hover:bg-white/5">
+                    <td className="whitespace-nowrap px-5 py-4">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">{epic.title}</div>
+                      <div className="text-xs text-gray-500">{epic.id}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-5 py-4">
                       <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          epic.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
-                            : epic.status === 'in-progress'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-yellow-100 text-yellow-800'
+                        className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                          epicStatusClass[epic.status] || 'bg-gray-100 text-gray-700'
                         }`}
                       >
-                        {epic.status}
+                        {epicStatusLabel[epic.status] || epic.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                       {epic.completedFeatures} / {epic.totalFeatures}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-1 mr-2">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full"
-                              style={{ width: `${epic.progressPercent}%` }}
-                            />
-                          </div>
+                    <td className="whitespace-nowrap px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-28 rounded-full bg-gray-200 dark:bg-white/15">
+                          <div
+                            className="h-2 rounded-full bg-blue-600"
+                            style={{ width: `${Math.max(0, Math.min(100, epic.progressPercent))}%` }}
+                          />
                         </div>
-                        <span className="text-sm text-gray-600">{epic.progressPercent}%</span>
+                        <span className="text-xs text-gray-600 dark:text-gray-300">{epic.progressPercent}%</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                       {epic.hoursProgress}%
                     </td>
                   </tr>
@@ -446,7 +392,7 @@ function DashboardContent() {
             </table>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

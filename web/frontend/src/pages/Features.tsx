@@ -1,31 +1,76 @@
-import { useState, useMemo, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../services/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Feature, FeatureStatus, Priority } from '@pmspec/types';
+import {
+  api,
+  type BatchUpdateFeaturesRequest,
+  type BatchUpdateFeaturesResponse,
+  type FeatureListQuery,
+  type PaginatedResponse,
+} from '../services/api';
 import { PriorityBadge } from '../components/PriorityBadge';
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
+import { useToast } from '../components/ui/Toast';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
-interface LocalFeature {
-  id: string;
-  epic: string;
-  title: string;
-  priority: string;
-  status: string;
-  assignee: string;
-  estimate: number;
-  actual: number;
-  skillsRequired: string[];
-  [key: string]: string | number | string[] | undefined;
-}
-
-interface ImportError {
+interface ImportErrorItem {
   row: number;
   field: string;
   message: string;
 }
 
-interface ImportApiError extends Error {
-  errors?: ImportError[];
+interface ImportResult {
+  created: number;
+  updated: number;
+  total?: number;
+  errors?: ImportErrorItem[];
+}
+
+interface ImportApiError {
+  errors?: ImportErrorItem[];
   error?: string;
+  message?: string;
+}
+
+type SortField = NonNullable<FeatureListQuery['sortBy']>;
+type EditableField = 'title' | 'assignee' | 'estimate';
+
+interface EditingState {
+  id: string;
+  field: EditableField;
+  value: string;
+}
+
+const STATUS_OPTIONS: Array<{ value: FeatureStatus; label: string }> = [
+  { value: 'todo', label: '待办' },
+  { value: 'in-progress', label: '进行中' },
+  { value: 'done', label: '已完成' },
+];
+
+const PRIORITY_OPTIONS: Array<{ value: Priority; label: string }> = [
+  { value: 'critical', label: '紧急' },
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
+];
+
+const SORTABLE_COLUMNS: Array<{ key: SortField; label: string }> = [
+  { key: 'id', label: 'ID' },
+  { key: 'title', label: '标题' },
+  { key: 'priority', label: '优先级' },
+  { key: 'status', label: '状态' },
+  { key: 'assignee', label: '负责人' },
+  { key: 'estimate', label: '估时' },
+];
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+function parseImportError(error: unknown): ImportApiError {
+  if (error && typeof error === 'object') {
+    const parsed = error as ImportApiError;
+    return parsed;
+  }
+  return {};
 }
 
 export function Features() {
@@ -39,184 +84,366 @@ export function Features() {
 function FeaturesContent() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { success, error, info } = useToast();
 
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | FeatureStatus>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Priority>('all');
+  const [epicFilter, setEpicFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<string>('id');
+  const [sortBy, setSortBy] = useState<SortField>('priority');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [batchPending, setBatchPending] = useState<BatchUpdateFeaturesRequest['updates'] | null>(null);
+  const [batchSummary, setBatchSummary] = useState('');
+  const [batchStatusValue, setBatchStatusValue] = useState<FeatureStatus>('in-progress');
+  const [batchPriorityValue, setBatchPriorityValue] = useState<Priority>('high');
+  const [batchAssigneeValue, setBatchAssigneeValue] = useState('');
 
-  const { data: features, isLoading, error } = useQuery<LocalFeature[]>({
-    queryKey: ['features'],
-    queryFn: () => api.getFeatures<LocalFeature[]>(),
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+      setPage(1);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  const listQuery = useMemo<FeatureListQuery>(
+    () => ({
+      status: statusFilter,
+      priority: priorityFilter,
+      epic: epicFilter === 'all' ? undefined : epicFilter,
+      assignee: assigneeFilter === 'all' ? undefined : assigneeFilter,
+      search: searchTerm || undefined,
+      sortBy,
+      sortOrder,
+      page,
+      pageSize,
+    }),
+    [assigneeFilter, epicFilter, page, pageSize, priorityFilter, searchTerm, sortBy, sortOrder, statusFilter]
+  );
+
+  const {
+    data: featurePage,
+    isLoading,
+    isFetching,
+    error: listError,
+  } = useQuery<PaginatedResponse<Feature>>({
+    queryKey: ['features', 'list', listQuery],
+    queryFn: () => api.getFeatures<PaginatedResponse<Feature>>(listQuery),
+    placeholderData: (previous) => previous,
   });
 
-  // CSV Export
+  const { data: allFeatures = [] } = useQuery<Feature[]>({
+    queryKey: ['features', 'all'],
+    queryFn: () => api.getFeatures<Feature[]>(),
+    staleTime: 30000,
+  });
+
+  const assigneeOptions = useMemo(() => {
+    const set = new Set(allFeatures.map((feature) => feature.assignee).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allFeatures]);
+
+  const epicOptions = useMemo(() => {
+    const set = new Set(allFeatures.map((feature) => feature.epic).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allFeatures]);
+
+  const features = featurePage?.data ?? [];
+  const total = featurePage?.total ?? 0;
+  const totalPages = featurePage?.totalPages ?? 1;
+  const currentPage = featurePage?.page ?? page;
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of prev) {
+        if (!allFeatures.some((feature) => feature.id === id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allFeatures]);
+
   const exportMutation = useMutation({
     mutationFn: () => api.exportCSV(),
     onSuccess: (blob) => {
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `features-${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `features-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      document.body.removeChild(anchor);
+      success('导出成功', '已下载最新功能列表 CSV。');
+    },
+    onError: () => {
+      error('导出失败', '请稍后重试。');
     },
   });
 
-  // CSV Template Download
-  const downloadTemplate = async () => {
-    try {
-      const blob = await api.downloadTemplate();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'pmspec-template.csv';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch {
-      alert('Failed to download template');
-    }
-  };
-
-  // CSV Import
   const importMutation = useMutation({
     mutationFn: (file: File) => api.importCSV(file),
-    onSuccess: (result) => {
+    onSuccess: (result: ImportResult) => {
       queryClient.invalidateQueries({ queryKey: ['features'] });
-      alert(`Import successful! Created: ${result.created}, Updated: ${result.updated}`);
+      success('导入成功', `新增 ${result.created} 条，更新 ${result.updated} 条。`);
     },
-    onError: (error: ImportApiError) => {
-      if (error.errors && error.errors.length > 0) {
-        const errorMsg = error.errors
-          .map((e) => `Row ${e.row}: ${e.field} - ${e.message}`)
+    onError: (mutationError: unknown) => {
+      const parsed = parseImportError(mutationError);
+      if (parsed.errors && parsed.errors.length > 0) {
+        const detail = parsed.errors
+          .slice(0, 6)
+          .map((item) => `第 ${item.row} 行 ${item.field}: ${item.message}`)
           .join('\n');
-        alert(`Import failed:\n\n${errorMsg}`);
-      } else {
-        alert(`Import failed: ${error.error || 'Unknown error'}`);
+        error('导入失败', detail);
+        return;
       }
+      error('导入失败', parsed.error || parsed.message || '未知错误');
     },
   });
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      importMutation.mutate(file);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+  const patchMutation = useMutation({
+    mutationFn: (payload: { id: string; updates: Partial<Feature> }) =>
+      api.patchFeature<Feature>(payload.id, payload.updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features'] });
+    },
+    onError: () => {
+      error('更新失败', '未能保存修改，请重试。');
+    },
+  });
 
-  // Get unique assignees for filter
-  const assignees = useMemo(() => {
-    if (!features) return [];
-    const uniqueAssignees = new Set(features.map((f) => f.assignee).filter(Boolean));
-    return Array.from(uniqueAssignees).sort();
-  }, [features]);
-
-  // Filter and sort features
-  const filteredAndSortedFeatures = useMemo(() => {
-    if (!features) return [];
-
-    let result = [...features];
-
-    // Apply search filter
-    if (searchTerm) {
-      result = result.filter((f) =>
-        f.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        f.id.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      result = result.filter((f) => f.status === statusFilter);
-    }
-
-    // Apply priority filter
-    if (priorityFilter !== 'all') {
-      result = result.filter((f) => (f.priority || 'medium') === priorityFilter);
-    }
-
-    // Apply assignee filter
-    if (assigneeFilter !== 'all') {
-      result = result.filter((f) => f.assignee === assigneeFilter);
-    }
-
-    // Apply sorting
-    result.sort((a, b) => {
-      let aValue = a[sortBy];
-      let bValue = b[sortBy];
-
-      // Handle numbers
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-
-      // Handle strings
-      aValue = String(aValue || '').toLowerCase();
-      bValue = String(bValue || '').toLowerCase();
-
-      if (sortOrder === 'asc') {
-        return aValue.localeCompare(bValue);
+  const batchMutation = useMutation({
+    mutationFn: (payload: BatchUpdateFeaturesRequest) =>
+      api.batchUpdateFeatures<Feature>(payload),
+    onSuccess: (result: BatchUpdateFeaturesResponse<Feature>) => {
+      queryClient.invalidateQueries({ queryKey: ['features'] });
+      setSelectedIds(new Set());
+      if (result.failed.length > 0) {
+        error(
+          '批量操作部分失败',
+          `成功 ${result.updated} 条，失败 ${result.failed.length} 条。`
+        );
       } else {
-        return bValue.localeCompare(aValue);
+        success('批量操作成功', `已更新 ${result.updated} 条功能。`);
       }
-    });
+    },
+    onError: () => {
+      error('批量操作失败', '请检查输入后重试。');
+    },
+    onSettled: () => {
+      setBatchPending(null);
+      setBatchSummary('');
+    },
+  });
 
-    return result;
-  }, [features, searchTerm, statusFilter, priorityFilter, assigneeFilter, sortBy, sortOrder]);
+  const selectedCount = selectedIds.size;
+  const currentPageIds = features.map((feature) => feature.id);
+  const allCurrentPageSelected =
+    currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
 
-  const handleSort = (column: string) => {
+  const toggleSort = (column: SortField) => {
     if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder((previous) => (previous === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(column);
       setSortOrder('asc');
     }
+    setPage(1);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectCurrentPage = () => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (allCurrentPageSelected) {
+        for (const id of currentPageIds) {
+          next.delete(id);
+        }
+      } else {
+        for (const id of currentPageIds) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setSearchInput('');
+    setSearchTerm('');
+    setStatusFilter('all');
+    setPriorityFilter('all');
+    setEpicFilter('all');
+    setAssigneeFilter('all');
+    setPage(1);
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const blob = await api.downloadTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'pmspec-template.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(anchor);
+      success('模板下载成功', '请按模板填写后再导入。');
+    } catch {
+      error('模板下载失败', '请稍后重试。');
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    importMutation.mutate(file);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const updateFeature = (id: string, updates: Partial<Feature>) => {
+    patchMutation.mutate(
+      { id, updates },
+      {
+        onSuccess: () => {
+          success('保存成功');
+        },
+      }
+    );
+  };
+
+  const startEditing = (feature: Feature, field: EditableField) => {
+    const value = field === 'estimate' ? String(feature.estimate) : String(feature[field] ?? '');
+    setEditing({ id: feature.id, field, value });
+  };
+
+  const commitEditing = (feature: Feature) => {
+    if (!editing || editing.id !== feature.id) {
+      return;
+    }
+
+    const value = editing.value.trim();
+    if (editing.field === 'title') {
+      if (!value || value === feature.title) {
+        setEditing(null);
+        return;
+      }
+      updateFeature(feature.id, { title: value });
+      setEditing(null);
+      return;
+    }
+
+    if (editing.field === 'assignee') {
+      if (value === feature.assignee) {
+        setEditing(null);
+        return;
+      }
+      updateFeature(feature.id, { assignee: value });
+      setEditing(null);
+      return;
+    }
+
+    if (editing.field === 'estimate') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0) {
+        error('估时格式错误', '估时必须是大于等于 0 的数字。');
+        return;
+      }
+      if (numeric === feature.estimate) {
+        setEditing(null);
+        return;
+      }
+      updateFeature(feature.id, { estimate: numeric });
+      setEditing(null);
+    }
+  };
+
+  const openBatchConfirm = (updates: BatchUpdateFeaturesRequest['updates'], label: string) => {
+    if (selectedCount === 0) {
+      info('请先选择功能项');
+      return;
+    }
+    setBatchPending(updates);
+    setBatchSummary(label);
+  };
+
+  const runBatchUpdate = () => {
+    if (!batchPending || selectedCount === 0) {
+      setBatchPending(null);
+      setBatchSummary('');
+      return;
+    }
+
+    batchMutation.mutate({
+      ids: Array.from(selectedIds),
+      updates: batchPending,
+    });
   };
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-gray-600">Loading features...</div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-gray-600">正在加载功能列表...</div>
       </div>
     );
   }
 
-  if (error) {
+  if (listError) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error loading features: {(error as Error).message}</p>
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <p className="text-red-800">加载功能列表失败：{(listError as Error).message}</p>
       </div>
     );
   }
+
+  const startIndex = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIndex = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-gray-900">Features</h2>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-3xl font-bold text-gray-900">功能管理</h2>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={downloadTemplate}
-            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition"
+            className="rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700"
           >
-            📥 Download Template
+            下载模板
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={importMutation.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
           >
-            {importMutation.isPending ? '⏳ Importing...' : '📤 Import CSV'}
+            {importMutation.isPending ? '导入中...' : '导入 CSV'}
           </button>
           <input
             ref={fileInputRef}
@@ -228,173 +455,416 @@ function FeaturesContent() {
           <button
             onClick={() => exportMutation.mutate()}
             disabled={exportMutation.isPending}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition disabled:opacity-50"
+            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-60"
           >
-            {exportMutation.isPending ? '⏳ Exporting...' : '📥 Export CSV'}
+            {exportMutation.isPending ? '导出中...' : '导出 CSV'}
           </button>
         </div>
       </div>
 
-      {/* Filters and Search */}
-      <div className="bg-white rounded-lg shadow p-4 mb-4 flex gap-4 items-center flex-wrap">
-        <div className="flex-1 min-w-[200px]">
+      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="text"
-            placeholder="Search features..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="搜索 ID / 标题 / 描述"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            className="min-w-[220px] flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-        </div>
 
-        <div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={(event) => {
+              setStatusFilter(event.target.value as 'all' | FeatureStatus);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Status</option>
-            <option value="todo">Todo</option>
-            <option value="in-progress">In Progress</option>
-            <option value="done">Done</option>
+            <option value="all">全部状态</option>
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
-        </div>
 
-        <div>
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={(event) => {
+              setPriorityFilter(event.target.value as 'all' | Priority);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Priorities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option value="all">全部优先级</option>
+            {PRIORITY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
-        </div>
 
-        <div>
+          <select
+            value={epicFilter}
+            onChange={(event) => {
+              setEpicFilter(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">全部 Epic</option>
+            {epicOptions.map((epic) => (
+              <option key={epic} value={epic}>
+                {epic}
+              </option>
+            ))}
+          </select>
+
           <select
             value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={(event) => {
+              setAssigneeFilter(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Assignees</option>
-            {assignees.map((assignee) => (
+            <option value="all">全部负责人</option>
+            {assigneeOptions.map((assignee) => (
               <option key={assignee} value={assignee}>
                 {assignee}
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="rounded-md px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
+          >
+            清空筛选
+          </button>
         </div>
 
-        {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assigneeFilter !== 'all') && (
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setStatusFilter('all');
-              setPriorityFilter('all');
-              setAssigneeFilter('all');
-            }}
-            className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            Clear Filters
-          </button>
-        )}
-
-        <div className="text-sm text-gray-600">
-          Showing {filteredAndSortedFeatures.length} of {features?.length || 0}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+          <span>
+            显示 {startIndex}-{endIndex} / 共 {total} 条
+          </span>
+          {isFetching ? <span>正在同步最新数据...</span> : null}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
+      {selectedCount > 0 ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium text-blue-900">已选择 {selectedCount} 项</span>
+            <button
+              type="button"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700"
+              onClick={() => openBatchConfirm({ status: batchStatusValue }, `状态更新为「${batchStatusValue}」`)}
+            >
+              批量改状态
+            </button>
+            <select
+              value={batchStatusValue}
+              onChange={(event) => setBatchStatusValue(event.target.value as FeatureStatus)}
+              className="rounded-md border border-blue-200 bg-white px-2 py-1.5"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700"
+              onClick={() =>
+                openBatchConfirm(
+                  { priority: batchPriorityValue },
+                  `优先级更新为「${batchPriorityValue}」`
+                )
+              }
+            >
+              批量改优先级
+            </button>
+            <select
+              value={batchPriorityValue}
+              onChange={(event) => setBatchPriorityValue(event.target.value as Priority)}
+              className="rounded-md border border-blue-200 bg-white px-2 py-1.5"
+            >
+              {PRIORITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              placeholder="新负责人"
+              value={batchAssigneeValue}
+              onChange={(event) => setBatchAssigneeValue(event.target.value)}
+              className="rounded-md border border-blue-200 bg-white px-2 py-1.5"
+            />
+            <button
+              type="button"
+              className="rounded-md bg-teal-600 px-3 py-1.5 text-white hover:bg-teal-700"
+              onClick={() =>
+                openBatchConfirm(
+                  { assignee: batchAssigneeValue.trim() },
+                  `负责人更新为「${batchAssigneeValue.trim() || '未分配'}」`
+                )
+              }
+            >
+              批量改负责人
+            </button>
+
+            <button
+              type="button"
+              className="rounded-md px-3 py-1.5 text-gray-600 hover:bg-white"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              清空选择
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th
-                onClick={() => handleSort('id')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                ID {sortBy === 'id' && (sortOrder === 'asc' ? '↑' : '↓')}
+              <th className="w-10 px-3 py-3 text-left">
+                <input
+                  type="checkbox"
+                  checked={allCurrentPageSelected}
+                  onChange={toggleSelectCurrentPage}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
               </th>
-              <th
-                onClick={() => handleSort('title')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                Title {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('priority')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                Priority {sortBy === 'priority' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('status')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                Status {sortBy === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('assignee')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                Assignee {sortBy === 'assignee' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('estimate')}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              >
-                Estimate {sortBy === 'estimate' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
+              {SORTABLE_COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  className="cursor-pointer px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:bg-gray-100"
+                  onClick={() => toggleSort(column.key)}
+                >
+                  {column.label}{' '}
+                  {sortBy === column.key ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredAndSortedFeatures.map((feature) => (
+          <tbody className="divide-y divide-gray-100 bg-white">
+            {features.map((feature) => (
               <tr key={feature.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <td className="px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(feature.id)}
+                    onChange={() => toggleSelect(feature.id)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
                   {feature.id}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {feature.title}
+                <td className="px-4 py-3 text-sm text-gray-900">
+                  {editing?.id === feature.id && editing.field === 'title' ? (
+                    <input
+                      autoFocus
+                      value={editing.value}
+                      onChange={(event) =>
+                        setEditing((previous) =>
+                          previous
+                            ? { ...previous, value: event.target.value }
+                            : previous
+                        )
+                      }
+                      onBlur={() => commitEditing(feature)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          commitEditing(feature);
+                        }
+                        if (event.key === 'Escape') {
+                          setEditing(null);
+                        }
+                      }}
+                      className="w-full rounded border border-blue-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-left hover:text-blue-700"
+                      onDoubleClick={() => startEditing(feature, 'title')}
+                    >
+                      {feature.title}
+                    </button>
+                  )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <PriorityBadge priority={feature.priority} size="small" />
+                <td className="whitespace-nowrap px-4 py-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <PriorityBadge priority={feature.priority ?? 'medium'} size="small" />
+                    <select
+                      value={feature.priority ?? 'medium'}
+                      onChange={(event) =>
+                        updateFeature(feature.id, { priority: event.target.value as Priority })
+                      }
+                      className="rounded border border-gray-300 px-2 py-1 text-xs"
+                    >
+                      {PRIORITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      feature.status === 'done'
-                        ? 'bg-green-100 text-green-800'
-                        : feature.status === 'in-progress'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
+                <td className="whitespace-nowrap px-4 py-3 text-sm">
+                  <select
+                    value={feature.status}
+                    onChange={(event) =>
+                      updateFeature(feature.id, { status: event.target.value as FeatureStatus })
+                    }
+                    className="rounded border border-gray-300 px-2 py-1 text-xs"
                   >
-                    {feature.status}
-                  </span>
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {feature.assignee || '-'}
+                <td className="px-4 py-3 text-sm text-gray-900">
+                  {editing?.id === feature.id && editing.field === 'assignee' ? (
+                    <input
+                      autoFocus
+                      value={editing.value}
+                      onChange={(event) =>
+                        setEditing((previous) =>
+                          previous
+                            ? { ...previous, value: event.target.value }
+                            : previous
+                        )
+                      }
+                      onBlur={() => commitEditing(feature)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          commitEditing(feature);
+                        }
+                        if (event.key === 'Escape') {
+                          setEditing(null);
+                        }
+                      }}
+                      className="w-full rounded border border-blue-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-left hover:text-blue-700"
+                      onDoubleClick={() => startEditing(feature, 'assignee')}
+                    >
+                      {feature.assignee || '-'}
+                    </button>
+                  )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {feature.estimate}h
+                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
+                  {editing?.id === feature.id && editing.field === 'estimate' ? (
+                    <input
+                      autoFocus
+                      value={editing.value}
+                      onChange={(event) =>
+                        setEditing((previous) =>
+                          previous
+                            ? { ...previous, value: event.target.value }
+                            : previous
+                        )
+                      }
+                      onBlur={() => commitEditing(feature)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          commitEditing(feature);
+                        }
+                        if (event.key === 'Escape') {
+                          setEditing(null);
+                        }
+                      }}
+                      className="w-24 rounded border border-blue-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="hover:text-blue-700"
+                      onDoubleClick={() => startEditing(feature, 'estimate')}
+                    >
+                      {feature.estimate}h
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        {filteredAndSortedFeatures.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            {features?.length === 0
-              ? 'No features found. Run `pmspec init` and create some features.'
-              : 'No features match the current filters.'}
+        {features.length === 0 ? (
+          <div className="py-10 text-center text-gray-500">
+            当前筛选条件下没有功能数据。
           </div>
-        )}
+        ) : null}
       </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3">
+        <div className="text-sm text-gray-600">
+          第 {currentPage} / {totalPages} 页
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+            disabled={currentPage <= 1}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:opacity-50"
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
+            disabled={currentPage >= totalPages}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:opacity-50"
+          >
+            下一页
+          </button>
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                每页 {size} 条
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={batchPending !== null}
+        title="确认批量更新"
+        description={`将对 ${selectedCount} 条功能执行批量修改：${batchSummary}`}
+        confirmText="确认执行"
+        onConfirm={runBatchUpdate}
+        onCancel={() => {
+          if (!batchMutation.isPending) {
+            setBatchPending(null);
+            setBatchSummary('');
+          }
+        }}
+        busy={batchMutation.isPending}
+      />
     </div>
   );
 }

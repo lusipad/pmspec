@@ -18,8 +18,11 @@
   },
   "nav": {
     "dashboard": "仪表盘",
+    "quickPlan": "快速计划",
     "kanban": "看板",
     "gantt": "甘特图",
+    "integrations": "集成中心",
+    "more": "更多",
     "features": "功能",
     "epics": "史诗",
     "milestones": "里程碑",
@@ -121,6 +124,113 @@
     "importing": "导入中...",
     "success": "导入成功",
     "failed": "导入失败"
+  },
+  "planBuilder": {
+    "title": "快速计划引导",
+    "description": "3 步完成目标定义、约束配置和 AI 首版排程，甘特图会以 Feature 粒度自动生成。",
+    "stepBadge": "步骤 {{value}}",
+    "step1Title": "步骤 1 · 目标",
+    "step2Title": "步骤 2 · 约束",
+    "step3Title": "步骤 3 · 计划确认",
+    "goalPlaceholder": "例如：在 6 周内交付新版客户门户，完成登录、账单与工单三个关键能力。",
+    "startDate": "开始日期",
+    "targetDate": "目标日期",
+    "dailyCapacity": "每日容量（小时）",
+    "constraint": "约束条件",
+    "constraintPlaceholder": "例如：核心模块必须先交付身份认证。",
+    "addConstraint": "添加",
+    "generatedFeatures": "已生成 {{count}} 个 Feature 排程。",
+    "impactTitle": "影响分析",
+    "impactSummary": "延期任务 {{delayedCount}} 个，负载超额成员 {{overloadedCount}} 人，依赖风险 {{riskCount}} 个。",
+    "confirmAndApply": "确认并应用",
+    "rebalanceBalanced": "AI 重排（平衡）",
+    "rebalanceConservative": "保守重排",
+    "rebalanceAggressive": "激进重排",
+    "previousStep": "上一步",
+    "generatePlan": "生成计划",
+    "nextStep": "下一步",
+    "restart": "重新开始",
+    "confirmSuccess": "计划已确认并应用。",
+    "generateSuccess": "计划草案生成成功。",
+    "rebalanceSuccess": "计划已按策略重排。",
+    "confirmed": "已确认应用",
+    "confirmDialogTitle": "确认应用计划",
+    "confirmDialogDescription": "将把当前计划中的 {{count}} 个 Feature 同步到项目数据，是否继续？",
+    "confirmDialogAction": "确认应用",
+    "quickActionsTitle": "下一步建议",
+    "quickActions": {
+      "gantt": "查看甘特图",
+      "kanban": "打开看板",
+      "features": "进入功能列表"
+    },
+    "unsavedWarning": "存在未保存变更，离开后可能丢失当前计划进度。",
+    "hoursSuffix": "h",
+    "featureStatus": {
+      "todo": "待办",
+      "in-progress": "进行中",
+      "done": "已完成"
+    },
+    "table": {
+      "feature": "功能",
+      "title": "标题",
+      "epic": "史诗",
+      "assignee": "负责人",
+      "estimate": "估时",
+      "start": "开始",
+      "end": "结束",
+      "status": "状态"
+    },
+    "errors": {
+      "generateFailed": "生成计划失败",
+      "confirmFailed": "确认计划失败",
+      "rebalanceFailed": "重排计划失败"
+    },
+    "validation": {
+      "goalRequired": "请先填写目标描述。",
+      "goalTooShort": "目标描述至少需要 6 个字符。",
+      "invalidDate": "请填写合法的开始日期和目标日期。",
+      "dateOrder": "目标日期不能早于开始日期。",
+      "capacityRange": "每日容量需在 1 到 24 小时之间。"
+    }
+  },
+  "integrations": {
+    "loading": "正在加载集成...",
+    "title": "集成中心",
+    "description": "统一管理 Azure DevOps、飞书、腾讯文档与其他主流平台连接。",
+    "importFile": "导入文件",
+    "importDone": "导入完成：{{connectorId}} 新增 {{created}}，更新 {{updated}}",
+    "syncLog": "同步日志",
+    "noSyncRecords": "暂无同步记录。",
+    "status": {
+      "connected": "已连接",
+      "fileIntegration": "文件集成"
+    },
+    "category": {
+      "engineering": "工程协作",
+      "collaboration": "协同办公"
+    },
+    "direction": {
+      "import": "导入",
+      "export": "导出"
+    },
+    "syncStatus": {
+      "pending": "待执行",
+      "running": "执行中",
+      "completed": "已完成",
+      "failed": "失败"
+    },
+    "table": {
+      "connector": "连接器",
+      "direction": "方向",
+      "status": "状态",
+      "started": "开始时间",
+      "message": "消息"
+    },
+    "errors": {
+      "loadFailed": "加载集成失败",
+      "selectFile": "请选择导入文件",
+      "importFailed": "导入失败"
+    }
   },
   "status": {
     "draft": "草稿",

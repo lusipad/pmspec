@@ -128,6 +128,73 @@ describe('Timeline Routes', () => {
       expect(mockCalculateCriticalPath).toHaveBeenCalledWith(mockTasks);
     });
 
+    it('should filter features and epics by assignee and status', async () => {
+      const mockEpics = [
+        { id: 'EPIC-001', title: 'Epic 1', status: 'planning', owner: 'Alice', estimate: 40, actual: 0, features: [] },
+        { id: 'EPIC-002', title: 'Epic 2', status: 'planning', owner: 'Bob', estimate: 24, actual: 0, features: [] },
+        { id: 'EPIC-003', title: 'Epic 3', status: 'planning', owner: 'Carol', estimate: 16, actual: 0, features: [] },
+      ];
+      const mockFeatures = [
+        { id: 'FEAT-001', epic: 'EPIC-001', title: 'Feature 1', status: 'todo', priority: 'high', assignee: 'Alice', estimate: 8, actual: 0, skillsRequired: [] },
+        { id: 'FEAT-002', epic: 'EPIC-002', title: 'Feature 2', status: 'done', priority: 'medium', assignee: 'Alice', estimate: 5, actual: 5, skillsRequired: [] },
+        { id: 'FEAT-003', epic: 'EPIC-002', title: 'Feature 3', status: 'todo', priority: 'medium', assignee: 'Bob', estimate: 3, actual: 0, skillsRequired: [] },
+        { id: 'FEAT-004', epic: 'EPIC-003', title: 'Feature 4', status: 'todo', priority: 'low', assignee: 'Alice', estimate: 2, actual: 0, skillsRequired: [] },
+      ];
+
+      mockGetEpics.mockResolvedValue(mockEpics);
+      mockGetFeatures.mockResolvedValue(mockFeatures);
+      mockCalculateTimeline.mockReturnValue([]);
+      mockCalculateCriticalPath.mockReturnValue([]);
+
+      const app = createApp();
+      const response = await request(app)
+        .get('/api/timeline/gantt')
+        .query({ assignee: 'Alice', status: 'todo' });
+
+      expect(response.status).toBe(200);
+      expect(mockCalculateTimeline).toHaveBeenCalledTimes(1);
+      const [filteredEpics, filteredFeatures] = mockCalculateTimeline.mock.calls[0];
+      expect(filteredFeatures).toEqual([mockFeatures[0], mockFeatures[3]]);
+      expect(filteredEpics).toEqual([mockEpics[0], mockEpics[2]]);
+    });
+
+    it('should keep selected epic when epic filter is provided even if feature result is empty', async () => {
+      const mockEpics = [
+        { id: 'EPIC-001', title: 'Epic 1', status: 'planning', owner: 'Alice', estimate: 40, actual: 0, features: [] },
+        { id: 'EPIC-002', title: 'Epic 2', status: 'planning', owner: 'Bob', estimate: 24, actual: 0, features: [] },
+      ];
+      const mockFeatures = [
+        { id: 'FEAT-001', epic: 'EPIC-001', title: 'Feature 1', status: 'todo', priority: 'high', assignee: 'Alice', estimate: 8, actual: 0, skillsRequired: [] },
+      ];
+
+      mockGetEpics.mockResolvedValue(mockEpics);
+      mockGetFeatures.mockResolvedValue(mockFeatures);
+      mockCalculateTimeline.mockReturnValue([]);
+      mockCalculateCriticalPath.mockReturnValue([]);
+
+      const app = createApp();
+      const response = await request(app)
+        .get('/api/timeline/gantt')
+        .query({ epic: 'EPIC-002', assignee: 'Alice', status: 'done' });
+
+      expect(response.status).toBe(200);
+      expect(mockCalculateTimeline).toHaveBeenCalledTimes(1);
+      const [filteredEpics, filteredFeatures] = mockCalculateTimeline.mock.calls[0];
+      expect(filteredFeatures).toEqual([]);
+      expect(filteredEpics).toEqual([mockEpics[1]]);
+    });
+
+    it('should return 400 for invalid status filter', async () => {
+      const app = createApp();
+      const response = await request(app).get('/api/timeline/gantt').query({ status: 'blocked' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.type).toBe('https://pmspec.io/errors/validation-error');
+      expect(response.body.detail).toBe('status must be one of: todo, in-progress, done');
+      expect(mockGetEpics).not.toHaveBeenCalled();
+      expect(mockGetFeatures).not.toHaveBeenCalled();
+    });
+
     it('should return 500 when dataService throws error', async () => {
       mockGetEpics.mockRejectedValue(new Error('Database error'));
 

@@ -134,10 +134,10 @@ export function getPriorityClasses(priority: Priority = 'medium'): string {
 export function getWorkloadLabel(estimate: number): string {
   const size = getWorkloadSize(estimate);
   const labels = {
-    S: 'Small',
-    M: 'Medium',
-    L: 'Large',
-    XL: 'Extra Large',
+    S: '小型',
+    M: '中型',
+    L: '大型',
+    XL: '超大型',
   };
 
   return labels[size];
@@ -148,10 +148,10 @@ export function getWorkloadLabel(estimate: number): string {
  */
 export function getPriorityLabel(priority: Priority = 'medium'): string {
   const labels = {
-    critical: 'Critical',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
+    critical: '紧急',
+    high: '高',
+    medium: '中',
+    low: '低',
   };
 
   return labels[priority];
