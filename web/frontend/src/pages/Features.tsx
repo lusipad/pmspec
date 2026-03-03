@@ -161,6 +161,7 @@ function FeaturesContent() {
   const currentPage = featurePage?.page ?? page;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cleanup stale selections when features change
     setSelectedIds((prev) => {
       const next = new Set(prev);
       let changed = false;
