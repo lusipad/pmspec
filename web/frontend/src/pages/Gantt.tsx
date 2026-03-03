@@ -130,12 +130,6 @@ function GanttContent() {
     done: '已完成',
   };
 
-  useEffect(() => {
-    if (selectedTaskId && !tasks.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(null);
-    }
-  }, [selectedTaskId, tasks]);
-
   const timelineScale = useMemo((): TimelineScale => {
     const now = new Date();
     const fallbackStart = viewMode === 'week' ? startOfWeek(now) : startOfMonth(now);

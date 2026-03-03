@@ -1,27 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-
-type ToastVariant = 'success' | 'error' | 'info';
-
-interface ToastOptions {
-  title: string;
-  description?: string;
-  variant?: ToastVariant;
-  duration?: number;
-}
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  ToastContext,
+  type ToastContextValue,
+  type ToastOptions,
+  type ToastVariant,
+} from './toast-context';
 
 interface ToastItem extends ToastOptions {
   id: number;
   variant: ToastVariant;
 }
-
-interface ToastContextValue {
-  pushToast: (options: ToastOptions) => void;
-  success: (title: string, description?: string) => void;
-  error: (title: string, description?: string) => void;
-  info: (title: string, description?: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
 
 const variantClasses: Record<ToastVariant, string> = {
   success: 'border-green-200 bg-green-50 text-green-900',
@@ -111,12 +99,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
     </ToastContext.Provider>
   );
-}
-
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used within ToastProvider');
-  }
-  return context;
 }

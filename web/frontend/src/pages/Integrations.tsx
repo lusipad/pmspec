@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type ConnectorInfo, type SyncJob } from '../services/api';
 
@@ -10,7 +10,7 @@ export function Integrations() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -23,11 +23,11 @@ export function Integrations() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [t]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function handleImport(connectorId: string, file: File | undefined) {
     if (!file) {

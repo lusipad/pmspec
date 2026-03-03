@@ -62,7 +62,7 @@ test.describe('Features Page Interaction', () => {
     
     if (await homeLink.count() > 0) {
       await homeLink.first().click();
-      await expect(page).toHaveURL('/');
+      await expect(page).toHaveURL('/dashboard');
     }
   });
 

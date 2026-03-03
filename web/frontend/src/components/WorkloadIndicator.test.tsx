@@ -11,7 +11,7 @@ describe('WorkloadIndicator', () => {
 
     it('renders with correct title attribute', () => {
       render(<WorkloadIndicator estimate={20} />);
-      expect(screen.getByTitle('Medium (20h)')).toBeInTheDocument();
+      expect(screen.getByTitle('中型 (20h)')).toBeInTheDocument();
     });
   });
 

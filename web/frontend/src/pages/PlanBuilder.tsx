@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { useToast } from '../components/ui/Toast';
+import { useToast } from '../hooks/useToast';
 import { api, type PlanDraft, type PlanImpact, type PlanningBriefInput } from '../services/api';
 
 type WizardStep = 1 | 2 | 3;

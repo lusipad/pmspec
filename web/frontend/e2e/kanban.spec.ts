@@ -91,7 +91,7 @@ test.describe('Kanban Page Navigation', () => {
     const homeLink = page.getByRole('link', { name: /仪表盘|dashboard|首页|home/i });
     if (await homeLink.count() > 0) {
       await homeLink.first().click();
-      await expect(page).toHaveURL('/');
+      await expect(page).toHaveURL('/dashboard');
     }
   });
 

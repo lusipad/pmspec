@@ -61,7 +61,7 @@ describe('FeatureCard', () => {
 
     it('renders Unassigned when no assignee', () => {
       render(<FeatureCard feature={createMockFeature({ assignee: '' })} />);
-      expect(screen.getByText('Unassigned')).toBeInTheDocument();
+      expect(screen.getByText('未分配')).toBeInTheDocument();
     });
 
     it('renders hours information', () => {
@@ -74,22 +74,22 @@ describe('FeatureCard', () => {
   describe('priority badge', () => {
     it('renders critical priority badge', () => {
       render(<FeatureCard feature={createMockFeature({ priority: 'critical' })} />);
-      expect(screen.getByText('Critical')).toBeInTheDocument();
+      expect(screen.getByText('紧急')).toBeInTheDocument();
     });
 
     it('renders high priority badge', () => {
       render(<FeatureCard feature={createMockFeature({ priority: 'high' })} />);
-      expect(screen.getByText('High')).toBeInTheDocument();
+      expect(screen.getByText('高')).toBeInTheDocument();
     });
 
     it('renders medium priority badge', () => {
       render(<FeatureCard feature={createMockFeature({ priority: 'medium' })} />);
-      expect(screen.getByText('Medium')).toBeInTheDocument();
+      expect(screen.getByText('中')).toBeInTheDocument();
     });
 
     it('renders low priority badge', () => {
       render(<FeatureCard feature={createMockFeature({ priority: 'low' })} />);
-      expect(screen.getByText('Low')).toBeInTheDocument();
+      expect(screen.getByText('低')).toBeInTheDocument();
     });
   });
 
@@ -118,12 +118,12 @@ describe('FeatureCard', () => {
   describe('progress and budget', () => {
     it('shows over budget warning when actual > estimate', () => {
       render(<FeatureCard feature={createMockFeature({ estimate: 20, actual: 30 })} />);
-      expect(screen.getByText('Over budget: +10h')).toBeInTheDocument();
+      expect(screen.getByText('超出预估：+10h')).toBeInTheDocument();
     });
 
     it('does not show over budget warning when under budget', () => {
       render(<FeatureCard feature={createMockFeature({ estimate: 20, actual: 10 })} />);
-      expect(screen.queryByText(/Over budget/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/超出预估/)).not.toBeInTheDocument();
     });
 
     it('renders progress bar for features with estimate', () => {
@@ -164,12 +164,12 @@ describe('FeatureCard', () => {
   describe('breakdown warning', () => {
     it('shows breakdown warning for XL tasks (>= 80h)', () => {
       render(<FeatureCard feature={createMockFeature({ estimate: 80 })} />);
-      expect(screen.getByText(/Consider breaking down this large task/)).toBeInTheDocument();
+      expect(screen.getByText(/建议拆分该大型任务/)).toBeInTheDocument();
     });
 
     it('does not show breakdown warning for smaller tasks', () => {
       render(<FeatureCard feature={createMockFeature({ estimate: 79 })} />);
-      expect(screen.queryByText(/Consider breaking down/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/建议拆分/)).not.toBeInTheDocument();
     });
   });
 });

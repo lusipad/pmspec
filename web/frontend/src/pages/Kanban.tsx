@@ -8,7 +8,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragCancelEvent,
   type DragOverEvent,
   type DragStartEvent,
   type DragEndEvent,
@@ -19,7 +18,7 @@ import { api } from '../services/api';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { FeatureCard } from '../components/Kanban/FeatureCard';
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
-import { useToast } from '../components/ui/Toast';
+import { useToast } from '../hooks/useToast';
 
 type FeatureStatus = Feature['status'];
 
@@ -233,7 +232,7 @@ function KanbanContent() {
     }
   };
 
-  const handleDragCancel = (_event: DragCancelEvent) => {
+  const handleDragCancel = () => {
     setActiveId(null);
     lastOverStatusRef.current = null;
   };

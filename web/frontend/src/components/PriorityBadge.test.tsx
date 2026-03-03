@@ -6,34 +6,34 @@ describe('PriorityBadge', () => {
   describe('rendering', () => {
     it('renders with default props', () => {
       render(<PriorityBadge />);
-      expect(screen.getByText('Medium')).toBeInTheDocument();
+      expect(screen.getByText('中')).toBeInTheDocument();
     });
 
     it('renders with correct title attribute', () => {
       render(<PriorityBadge priority="high" />);
-      expect(screen.getByTitle('Priority: High')).toBeInTheDocument();
+      expect(screen.getByTitle('优先级：高')).toBeInTheDocument();
     });
   });
 
   describe('priority props', () => {
     it('renders critical priority', () => {
       render(<PriorityBadge priority="critical" />);
-      expect(screen.getByText('Critical')).toBeInTheDocument();
+      expect(screen.getByText('紧急')).toBeInTheDocument();
     });
 
     it('renders high priority', () => {
       render(<PriorityBadge priority="high" />);
-      expect(screen.getByText('High')).toBeInTheDocument();
+      expect(screen.getByText('高')).toBeInTheDocument();
     });
 
     it('renders medium priority', () => {
       render(<PriorityBadge priority="medium" />);
-      expect(screen.getByText('Medium')).toBeInTheDocument();
+      expect(screen.getByText('中')).toBeInTheDocument();
     });
 
     it('renders low priority', () => {
       render(<PriorityBadge priority="low" />);
-      expect(screen.getByText('Low')).toBeInTheDocument();
+      expect(screen.getByText('低')).toBeInTheDocument();
     });
   });
 

@@ -10,7 +10,7 @@ import {
 } from '../services/api';
 import { PriorityBadge } from '../components/PriorityBadge';
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary';
-import { useToast } from '../components/ui/Toast';
+import { useToast } from '../hooks/useToast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface ImportErrorItem {
@@ -96,7 +96,7 @@ function FeaturesContent() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIdsState, setSelectedIdsState] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [batchPending, setBatchPending] = useState<BatchUpdateFeaturesRequest['updates'] | null>(null);
   const [batchSummary, setBatchSummary] = useState('');
@@ -159,20 +159,19 @@ function FeaturesContent() {
   const total = featurePage?.total ?? 0;
   const totalPages = featurePage?.totalPages ?? 1;
   const currentPage = featurePage?.page ?? page;
-
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const id of prev) {
-        if (!allFeatures.some((feature) => feature.id === id)) {
-          next.delete(id);
-          changed = true;
-        }
+  const validFeatureIds = useMemo(
+    () => new Set(allFeatures.map((feature) => feature.id)),
+    [allFeatures]
+  );
+  const selectedIds = useMemo(() => {
+    const next = new Set<string>();
+    for (const id of selectedIdsState) {
+      if (validFeatureIds.has(id)) {
+        next.add(id);
       }
-      return changed ? next : prev;
-    });
-  }, [allFeatures]);
+    }
+    return next;
+  }, [selectedIdsState, validFeatureIds]);
 
   const exportMutation = useMutation({
     mutationFn: () => api.exportCSV(),
@@ -228,7 +227,7 @@ function FeaturesContent() {
       api.batchUpdateFeatures<Feature>(payload),
     onSuccess: (result: BatchUpdateFeaturesResponse<Feature>) => {
       queryClient.invalidateQueries({ queryKey: ['features'] });
-      setSelectedIds(new Set());
+      setSelectedIdsState(new Set());
       if (result.failed.length > 0) {
         error(
           '批量操作部分失败',
@@ -263,7 +262,7 @@ function FeaturesContent() {
   };
 
   const toggleSelect = (id: string) => {
-    setSelectedIds((previous) => {
+    setSelectedIdsState((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
         next.delete(id);
@@ -275,7 +274,7 @@ function FeaturesContent() {
   };
 
   const toggleSelectCurrentPage = () => {
-    setSelectedIds((previous) => {
+    setSelectedIdsState((previous) => {
       const next = new Set(previous);
       if (allCurrentPageSelected) {
         for (const id of currentPageIds) {
@@ -623,7 +622,7 @@ function FeaturesContent() {
             <button
               type="button"
               className="rounded-md px-3 py-1.5 text-gray-600 hover:bg-white"
-              onClick={() => setSelectedIds(new Set())}
+              onClick={() => setSelectedIdsState(new Set())}
             >
               清空选择
             </button>
