@@ -8,7 +8,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragCancelEvent,
   type DragOverEvent,
   type DragStartEvent,
   type DragEndEvent,
@@ -233,7 +232,7 @@ function KanbanContent() {
     }
   };
 
-  const handleDragCancel = (_event: DragCancelEvent) => {
+  const handleDragCancel = () => {
     setActiveId(null);
     lastOverStatusRef.current = null;
   };

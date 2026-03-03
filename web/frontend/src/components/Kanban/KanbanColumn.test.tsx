@@ -65,7 +65,7 @@ describe('KanbanColumn', () => {
       render(
         <KanbanColumn title="Done" status="done" features={[]} count={0} />
       );
-      expect(screen.getByText('No features')).toBeInTheDocument();
+      expect(screen.getByText('暂无功能项')).toBeInTheDocument();
     });
 
     it('renders features when provided', () => {

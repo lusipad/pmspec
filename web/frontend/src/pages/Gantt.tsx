@@ -132,6 +132,7 @@ function GanttContent() {
 
   useEffect(() => {
     if (selectedTaskId && !tasks.some((task) => task.id === selectedTaskId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- cleanup stale selection when tasks change
       setSelectedTaskId(null);
     }
   }, [selectedTaskId, tasks]);
