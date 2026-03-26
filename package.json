@@ -60,7 +60,7 @@
     "@vitest/ui": "^4.0.17",
     "electron": "^41.0.0",
     "electron-builder": "^26.0.12",
-    "typescript": "^5.9.2",
+    "typescript": "^6.0.2",
     "vitest": "^4.0.17"
   },
   "dependencies": {
