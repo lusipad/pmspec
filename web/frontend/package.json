@@ -17,11 +17,11 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/react-query": "^5.100.9",
-    "i18next": "^26.0.9",
+    "i18next": "^26.0.10",
     "papaparse": "^5.5.3",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-i18next": "^17.0.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.7",
     "react-router-dom": "^7.15.0",
     "recharts": "^3.8.1"
   },
@@ -47,7 +47,7 @@
     "tailwindcss": "^4.1.17",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.10",
+    "vite": "^8.0.11",
     "vitest": "^4.0.18"
   }
 }
