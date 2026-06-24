@@ -73,7 +73,7 @@
     "commander": "^14.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "inquirer": "^13.2.2",
+    "inquirer": "^14.0.2",
     "jsonwebtoken": "^9.0.3",
     "minisearch": "^7.1.2",
     "multer": "^2.0.2",
