@@ -1,3 +1,5 @@
+> **归档说明（2026-07-10）**: 该变更在 v1 时期已实现但未归档。随 redesign-pmspec-v2 流程复位补归档；其中 Web/Desktop 相关能力已在 v2 中移除。
+
 # Add NPM Package Publishing
 
 ## Why

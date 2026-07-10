@@ -1,3 +1,5 @@
+> **归档说明（2026-07-10）**: 该变更已被 redesign-pmspec-v2 取代并废弃，未（完整）实现。归档仅作历史记录。
+
 # Enhance UI Visual Priority and Workload Indicators
 
 ## Why
