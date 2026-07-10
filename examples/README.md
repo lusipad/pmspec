@@ -1,185 +1,19 @@
-# PMSpec 示例项目
+# 示例
 
-这个目录包含使用 PMSpec 管理的示例项目,展示各种使用场景和最佳实践。
+## demo-project
 
-## 可用示例
+一个用 PMSpec CLI 真实生成的示例工作区（电商后台）：2 个 Epic、3 个 Feature、2 个 Story，
+含团队配置、估算与进行中的状态。
 
-### 1. 电商后端系统 (`ecommerce-backend/`)
-
-**项目类型**: 中型 Web 应用后端
-**团队规模**: 5 人
-**项目周期**: 3 个月
-**总工时**: ~460 小时
-
-**特点**:
-- ✅ 完整的三层结构 (Epic → Feature → UserStory)
-- ✅ 多技术栈团队配置
-- ✅ 真实的工作负载分配示例
-- ✅ 技能匹配和负载平衡演示
-
-**项目结构**:
-```
-ecommerce-backend/
-├── pmspace/
-│   ├── project.md              # 项目概览
-│   ├── team.md                 # 5 人团队配置
-│   ├── epics/
-│   │   ├── epic-001.md        # 用户管理系统
-│   │   ├── epic-002.md        # 商品管理系统
-│   │   └── epic-003.md        # 订单处理系统
-│   └── features/
-│       ├── feat-001.md        # 用户注册和邮箱验证
-│       ├── feat-002.md        # 用户登录和会话管理
-│       └── ... (21 个 Features)
-├── DEMO.md                     # Demo 说明
-└── README_DEMO.md              # 详细的 Demo 文档
-```
-
-**如何使用**:
+进入目录体验：
 
 ```bash
-# 进入示例目录
-cd examples/ecommerce-backend
-
-# 查看项目概览
-pmspec list epics
-pmspec list features
-
-# 查看详细信息
-pmspec show EPIC-001
-pmspec show FEAT-001
-
-# 工作负载分析
-pmspec analyze
-pmspec analyze --recommend
-
-# 验证数据完整性
-pmspec validate
+cd examples/demo-project
+pmspec list                     # 三层结构总览
+pmspec show EPIC-001            # Epic 详情与子项进度
+pmspec stats --by-assignee      # 负载视图
+pmspec validate                 # 校验通过
 ```
 
-**学习要点**:
-
-1. **Epic 规划**: 如何将大型系统分解为有意义的 Epic
-2. **Feature 设计**: 如何定义可独立交付的 Feature
-3. **团队配置**: 如何配置多技能团队成员
-4. **技能匹配**: 如何利用技能要求进行任务分配
-5. **工时估算**: 合理的工时估算范围和方法
-6. **状态管理**: 如何追踪项目进度
-
-## 快速体验
-
-### 方式 1: 直接在示例目录中试用
-
-```bash
-# 进入任意示例目录
-cd examples/ecommerce-backend
-
-# 运行 PMSpec 命令
-pmspec list epics
-pmspec show EPIC-001
-pmspec analyze
-```
-
-### 方式 2: 复制示例作为起点
-
-```bash
-# 复制示例到你的工作目录
-cp -r examples/ecommerce-backend ~/my-project
-
-# 进入项目目录
-cd ~/my-project
-
-# 修改项目信息
-code pmspace/project.md
-code pmspace/team.md
-
-# 开始管理你的项目
-pmspec list epics
-```
-
-### 方式 3: 使用示例学习数据格式
-
-```bash
-# 查看示例文件了解格式
-cat examples/ecommerce-backend/pmspace/epics/epic-001.md
-cat examples/ecommerce-backend/pmspace/features/feat-001.md
-cat examples/ecommerce-backend/pmspace/team.md
-
-# 参考格式创建你自己的文件
-```
-
-## 示例对比
-
-| 示例 | 复杂度 | 团队规模 | Epic 数 | Feature 数 | 总工时 | 适用场景 |
-|------|--------|----------|---------|------------|--------|----------|
-| ecommerce-backend | 中等 | 5 人 | 3 | 21 | 460h | Web 应用、多团队协作 |
-
-## 未来示例计划
-
-我们计划添加更多示例:
-
-- **simple-website** (简单): 小型网站项目,1-2 人团队
-- **mobile-app** (中等): 移动应用开发,跨平台团队
-- **microservices** (复杂): 微服务架构,大型团队
-- **data-pipeline** (专业): 数据工程项目,专业技能要求
-
-## 贡献示例
-
-欢迎贡献新的示例项目!
-
-**要求**:
-1. 包含完整的 `pmspace/` 结构
-2. 提供 README 说明项目背景和学习要点
-3. 数据通过 `pmspec validate` 验证
-4. 展示特定场景或最佳实践
-
-**提交步骤**:
-```bash
-# 1. 创建新示例目录
-mkdir examples/your-example
-
-# 2. 设置项目结构
-cd examples/your-example
-pmspec init
-
-# 3. 填充示例数据
-# ... 编辑 pmspace/ 文件 ...
-
-# 4. 验证数据
-pmspec validate
-
-# 5. 添加 README
-code README.md
-
-# 6. 提交 PR
-git add examples/your-example
-git commit -m "Add new example: your-example"
-```
-
-## 常见问题
-
-### Q: 可以直接在示例目录中修改吗?
-
-A: 可以,但建议复制到自己的目录中使用。示例目录用于参考和学习。
-
-### Q: 如何基于示例创建自己的项目?
-
-A: 复制示例目录,然后修改 `project.md` 和 `team.md`,删除或修改不需要的 Epic/Feature。
-
-### Q: 示例数据是真实的吗?
-
-A: 示例数据是虚构的,但基于真实项目的结构和工时估算规律设计。
-
-### Q: 可以将示例用于生产环境吗?
-
-A: 示例仅用于学习和参考。生产项目应根据实际需求定制。
-
-## 相关资源
-
-- [README.md](../README.md) - PMSpec 完整文档
-- [QUICKSTART.md](../QUICKSTART.md) - 快速入门指南
-- [openspec/](../openspec/) - OpenSpec 变更管理文档
-
----
-
-**开始探索示例项目,快速上手 PMSpec!** 🚀
+也可以直接阅读 `demo-project/pmspace/` 下的 Markdown 文件了解存储格式——
+它们就是 PMSpec 的全部数据。
