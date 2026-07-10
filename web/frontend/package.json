@@ -17,11 +17,11 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/react-query": "^5.101.2",
-    "i18next": "^26.3.5",
+    "i18next": "^26.3.6",
     "papaparse": "^5.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-i18next": "^17.0.8",
+    "react-i18next": "^17.0.9",
     "react-router-dom": "^7.18.1",
     "recharts": "^3.9.2"
   },
