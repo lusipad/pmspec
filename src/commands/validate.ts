@@ -1,80 +1,40 @@
 import { Command } from 'commander';
-import { readdir } from 'fs/promises';
-import { join } from 'path';
 import chalk from 'chalk';
-import { readEpicFile, readFeatureFile, readTeamFile } from '../core/parser.js';
-import { validateProject, formatValidationIssues } from '../utils/validation.js';
+import { validateWorkspace } from '../core/validate.js';
+import { ok, printJson, requireWorkspace } from '../cli/output.js';
 
 export const validateCommand = new Command('validate')
-  .description('Validate project structure and data integrity')
-  .argument('[id]', 'Optional: validate specific Epic or Feature')
-  .action(async (id) => {
-    const pmspaceDir = join(process.cwd(), 'pmspace');
+  .description('校验工作区数据完整性（错误时以非零退出码结束）')
+  .option('--json', '以 JSON 输出校验结果')
+  .action(async (options: { json?: boolean }) => {
+    const ws = await requireWorkspace();
+    const result = validateWorkspace(ws);
 
-    try {
-      if (id) {
-        await validateSpecific(pmspaceDir, id);
-      } else {
-        await validateAll(pmspaceDir);
-      }
-    } catch (error: any) {
-      console.error(chalk.red('Error:'), error.message);
+    if (options.json) {
+      printJson(result);
+      if (result.errors.length > 0) process.exit(1);
+      return;
+    }
+
+    for (const issue of result.errors) {
+      const where = issue.file ? chalk.dim(` (${issue.file})`) : '';
+      console.log(`${chalk.red('✗')} [${issue.code}] ${issue.message}${where}`);
+    }
+    for (const issue of result.warnings) {
+      const where = issue.file ? chalk.dim(` (${issue.file})`) : '';
+      console.log(`${chalk.yellow('⚠')} [${issue.code}] ${issue.message}${where}`);
+    }
+
+    if (result.errors.length > 0) {
+      console.log(
+        chalk.red(`\n${result.errors.length} 个错误`) +
+          (result.warnings.length > 0 ? chalk.yellow(`，${result.warnings.length} 个警告`) : '')
+      );
       process.exit(1);
     }
+    if (result.warnings.length > 0) {
+      console.log(chalk.yellow(`\n${result.warnings.length} 个警告，无错误`));
+      return;
+    }
+    ok('校验通过，无错误无警告');
   });
-
-async function validateAll(pmspaceDir: string) {
-  console.log(chalk.cyan('Validating project...\n'));
-
-  // Read all Epics
-  const epicsDir = join(pmspaceDir, 'epics');
-  const epicFiles = await readdir(epicsDir);
-  const epics = [];
-
-  for (const file of epicFiles.filter(f => f.endsWith('.md'))) {
-    const epic = await readEpicFile(join(epicsDir, file));
-    epics.push(epic);
-  }
-
-  // Read all Features
-  const featuresDir = join(pmspaceDir, 'features');
-  const featureFiles = await readdir(featuresDir);
-  const features = [];
-
-  for (const file of featureFiles.filter(f => f.endsWith('.md'))) {
-    const feature = await readFeatureFile(join(featuresDir, file));
-    features.push(feature);
-  }
-
-  // Read Team (optional)
-  let team;
-  try {
-    team = await readTeamFile(join(pmspaceDir, 'team.md'));
-  } catch {
-    // Team file not required
-  }
-
-  // Validate
-  const result = validateProject(epics, features, team);
-
-  console.log(formatValidationIssues(result));
-
-  if (!result.valid) {
-    process.exit(1);
-  }
-}
-
-async function validateSpecific(pmspaceDir: string, id: string) {
-  if (id.startsWith('EPIC-')) {
-    const filePath = join(pmspaceDir, 'epics', `${id.toLowerCase()}.md`);
-    const epic = await readEpicFile(filePath);
-    console.log(chalk.green(`✓ ${epic.id} is valid`));
-  } else if (id.startsWith('FEAT-')) {
-    const filePath = join(pmspaceDir, 'features', `${id.toLowerCase()}.md`);
-    const feature = await readFeatureFile(filePath);
-    console.log(chalk.green(`✓ ${feature.id} is valid`));
-  } else {
-    console.error(chalk.red(`Invalid ID: ${id}`));
-    process.exit(1);
-  }
-}

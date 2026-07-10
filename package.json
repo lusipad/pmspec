@@ -56,14 +56,11 @@
     "vitest": "^4.0.17"
   },
   "dependencies": {
-    "@types/inquirer": "^9.0.9",
     "chalk": "^5.5.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
     "gray-matter": "^4.0.3",
-    "inquirer": "^13.2.2",
     "minisearch": "^7.1.2",
-    "ora": "^9.1.0",
     "zod": "^4.3.6"
   }
 }

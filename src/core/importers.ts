@@ -1,829 +1,417 @@
+import { readFile, readdir, stat } from 'fs/promises';
+import { existsSync } from 'fs';
+import path from 'path';
+import {
+  EpicFrontmatter,
+  FeatureFrontmatter,
+  Priority,
+  Status,
+  StoryFrontmatter,
+} from './schema.js';
+
 /**
- * External Tool Importers Module
- * 
- * Provides import functionality from external project management tools:
- * - Jira: Epic → Category, Story/Task → Feature
- * - Linear: Project → Epic, Issue → Feature
- * - GitHub Issues: Milestone → Milestone, Issue → Feature, Labels → Skills/Tags
- * 
- * Run `node setup-importers.js` from project root to extract this into 
- * separate files under src/importers/ directory.
+ * v1 数据迁移与通用 CSV 导入（对应 spec：project-data / v1 数据迁移）。
+ * 导入只产出内存结果，由调用方（import 命令）负责分配最终 ID 并写盘；
+ * 不修改、不删除任何源数据。
  */
 
-import { z } from 'zod';
-import { readFile } from 'fs/promises';
-import type { SimpleFeature } from './simple-model.js';
-import { CSVHandler } from '../utils/csv-handler.js';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export type ImportSource = 'jira' | 'linear' | 'github';
-
-export const ImportOptionsSchema = z.object({
-  file: z.string().optional(),
-  content: z.string().optional(),
-  dryRun: z.boolean().default(false),
-  merge: z.boolean().default(false),
-  outputFile: z.string().default('features.csv'),
-});
-
-export type ImportOptions = z.infer<typeof ImportOptionsSchema>;
+export interface ImportedEpic {
+  fm: Omit<EpicFrontmatter, 'id'> & { id?: string };
+  body: string;
+}
+export interface ImportedFeature {
+  fm: Omit<FeatureFrontmatter, 'id' | 'epic'> & { id?: string };
+  body: string;
+  /** 源数据中的 Epic 引用：v1 的 EPIC-xxx 或分组名 */
+  epicRef?: string;
+}
+export interface ImportedStory {
+  fm: Omit<StoryFrontmatter, 'id' | 'feature'> & { id?: string };
+  body: string;
+  /** 源数据中的父 Feature 引用（v1 FEAT-xxx） */
+  featureRef: string;
+}
 
 export interface ImportResult {
-  success: boolean;
-  source: ImportSource;
-  features: SimpleFeature[];
+  format: ImportFormat;
   epics: ImportedEpic[];
-  milestones: ImportedMilestone[];
-  errors: ImportError[];
-  warnings: ImportWarning[];
-  stats: ImportStats;
+  features: ImportedFeature[];
+  stories: ImportedStory[];
+  warnings: string[];
 }
 
-export interface ImportedEpic {
-  id: string;
-  name: string;
-  description: string;
-  originalId?: string;
-  originalType?: string;
-}
+export type ImportFormat = 'v1-csv' | 'v1-pmspace' | 'csv';
 
-export interface ImportedMilestone {
-  id: string;
-  name: string;
-  description: string;
-  dueDate?: string;
-  originalId?: string;
-}
+/* ---------- 通用工具 ---------- */
 
-export interface ImportError {
-  row?: number;
-  field?: string;
-  message: string;
-  originalItem?: unknown;
-}
-
-export interface ImportWarning {
-  row?: number;
-  field?: string;
-  message: string;
-}
-
-export interface ImportStats {
-  totalItems: number;
-  featuresImported: number;
-  epicsImported: number;
-  milestonesImported: number;
-  skipped: number;
-  errors: number;
-}
-
-export interface Importer {
-  name: string;
-  source: ImportSource;
-  description: string;
-  validate(content: string): Promise<{ valid: boolean; errors: string[] }>;
-  import(options: ImportOptions): Promise<ImportResult>;
-  preview(options: ImportOptions): Promise<ImportResult>;
-}
-
-// ============================================================================
-// Jira Types
-// ============================================================================
-
-export const JiraIssueSchema = z.object({
-  key: z.string(),
-  fields: z.object({
-    summary: z.string(),
-    description: z.string().nullable().optional(),
-    issuetype: z.object({ name: z.string() }),
-    status: z.object({ name: z.string() }),
-    priority: z.object({ name: z.string() }).optional(),
-    assignee: z.object({ displayName: z.string() }).nullable().optional(),
-    labels: z.array(z.string()).default([]),
-    timeoriginalestimate: z.number().nullable().optional(),
-    created: z.string().optional(),
-    duedate: z.string().nullable().optional(),
-    parent: z.object({
-      key: z.string(),
-      fields: z.object({
-        summary: z.string(),
-        issuetype: z.object({ name: z.string() }),
-      }),
-    }).optional(),
-    customfield_10014: z.string().nullable().optional(),
-  }),
-});
-
-export type JiraIssue = z.infer<typeof JiraIssueSchema>;
-export const JiraExportSchema = z.object({ issues: z.array(JiraIssueSchema) });
-export type JiraExport = z.infer<typeof JiraExportSchema>;
-
-// ============================================================================
-// Linear Types
-// ============================================================================
-
-export const LinearIssueSchema = z.object({
-  id: z.string(),
-  identifier: z.string(),
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  state: z.object({ name: z.string(), type: z.string() }),
-  priority: z.number(),
-  priorityLabel: z.string(),
-  estimate: z.number().nullable().optional(),
-  assignee: z.object({ name: z.string() }).nullable().optional(),
-  labels: z.object({ nodes: z.array(z.object({ name: z.string() })) }).optional(),
-  createdAt: z.string().optional(),
-  dueDate: z.string().nullable().optional(),
-  project: z.object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string().nullable().optional(),
-  }).nullable().optional(),
-});
-
-export type LinearIssue = z.infer<typeof LinearIssueSchema>;
-export const LinearExportSchema = z.object({
-  issues: z.array(LinearIssueSchema),
-  projects: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string().nullable().optional(),
-  })).optional(),
-});
-export type LinearExport = z.infer<typeof LinearExportSchema>;
-
-// ============================================================================
-// GitHub Types
-// ============================================================================
-
-export const GitHubIssueSchema = z.object({
-  number: z.number(),
-  title: z.string(),
-  body: z.string().nullable().optional(),
-  state: z.enum(['open', 'closed']),
-  labels: z.array(z.object({ name: z.string() })).default([]),
-  assignee: z.object({ login: z.string() }).nullable().optional(),
-  assignees: z.array(z.object({ login: z.string() })).optional(),
-  milestone: z.object({
-    number: z.number(),
-    title: z.string(),
-    description: z.string().nullable().optional(),
-    due_on: z.string().nullable().optional(),
-  }).nullable().optional(),
-  created_at: z.string().optional(),
-});
-
-export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
-export const GitHubExportSchema = z.object({
-  issues: z.array(GitHubIssueSchema),
-  milestones: z.array(z.object({
-    number: z.number(),
-    title: z.string(),
-    description: z.string().nullable().optional(),
-    due_on: z.string().nullable().optional(),
-  })).optional(),
-});
-export type GitHubExport = z.infer<typeof GitHubExportSchema>;
-
-// ============================================================================
-// Base Importer
-// ============================================================================
-
-abstract class BaseImporter implements Importer {
-  abstract name: string;
-  abstract source: ImportSource;
-  abstract description: string;
-
-  protected async getContent(options: ImportOptions): Promise<string> {
-    if (options.content) return options.content;
-    if (options.file) return await readFile(options.file, 'utf-8');
-    throw new Error('Either file path or content must be provided');
-  }
-
-  protected parseJSON<T>(content: string): T {
-    try {
-      return JSON.parse(content) as T;
-    } catch (error) {
-      throw new Error(`Invalid JSON format: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  protected createEmptyResult(): ImportResult {
-    return {
-      success: false,
-      source: this.source,
-      features: [],
-      epics: [],
-      milestones: [],
-      errors: [],
-      warnings: [],
-      stats: { totalItems: 0, featuresImported: 0, epicsImported: 0, milestonesImported: 0, skipped: 0, errors: 0 },
-    };
-  }
-
-  protected generateFeatureId(prefix: string, index: number): string {
-    return `${prefix}-${String(index).padStart(3, '0')}`;
-  }
-
-  protected mapPriority(priority: string): 'low' | 'medium' | 'high' | 'critical' {
-    const normalized = priority.toLowerCase();
-    if (['critical', 'blocker', 'highest', 'urgent', '1'].includes(normalized)) return 'critical';
-    if (['high', '2'].includes(normalized)) return 'high';
-    if (['low', 'lowest', 'trivial', '4', '5'].includes(normalized)) return 'low';
-    return 'medium';
-  }
-
-  protected mapStatus(status: string): 'todo' | 'in-progress' | 'done' | 'blocked' {
-    const normalized = status.toLowerCase();
-    if (['done', 'closed', 'completed', 'resolved', 'finished'].includes(normalized)) return 'done';
-    if (['in progress', 'in-progress', 'inprogress', 'started', 'active', 'working'].includes(normalized)) return 'in-progress';
-    if (['blocked', 'on hold', 'waiting', 'pending'].includes(normalized)) return 'blocked';
-    return 'todo';
-  }
-
-  protected formatDate(date: string | null | undefined): string | undefined {
-    if (!date) return undefined;
-    try {
-      return new Date(date).toISOString().split('T')[0];
-    } catch {
-      return undefined;
-    }
-  }
-
-  protected convertToHours(seconds: number | null | undefined): number {
-    if (!seconds) return 8;
-    return Math.ceil(seconds / 3600);
-  }
-
-  protected sanitizeId(name: string): string {
-    return name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '').substring(0, 50);
-  }
-
-  abstract validate(content: string): Promise<{ valid: boolean; errors: string[] }>;
-  abstract import(options: ImportOptions): Promise<ImportResult>;
-
-  async preview(options: ImportOptions): Promise<ImportResult> {
-    return this.import({ ...options, dryRun: true });
-  }
-
-  protected async writeFeatures(features: SimpleFeature[], outputFile: string, merge: boolean): Promise<void> {
-    if (merge) {
-      try {
-        const existingFeatures = await CSVHandler.readFeatures(outputFile);
-        const mergedFeatures = [...existingFeatures];
-        for (const feature of features) {
-          const existingIndex = mergedFeatures.findIndex(f => f.id === feature.id);
-          if (existingIndex >= 0) mergedFeatures[existingIndex] = feature;
-          else mergedFeatures.push(feature);
+/** 极简但正确的 CSV 解析：支持引号包裹、转义引号、CRLF */
+export function parseCsv(content: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  const text = content.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
         }
-        await CSVHandler.writeFeatures(outputFile, mergedFeatures);
-      } catch {
-        await CSVHandler.writeFeatures(outputFile, features);
+      } else {
+        field += ch;
       }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field);
+      field = '';
+      if (row.some((f) => f.trim() !== '')) rows.push(row.map((f) => f.trim()));
+      row = [];
     } else {
-      await CSVHandler.writeFeatures(outputFile, features);
+      field += ch;
     }
   }
+  row.push(field);
+  if (row.some((f) => f.trim() !== '')) rows.push(row.map((f) => f.trim()));
+  return rows;
 }
 
-// ============================================================================
-// Jira Importer
-// ============================================================================
-
-export class JiraImporter extends BaseImporter {
-  name = 'Jira Importer';
-  source: ImportSource = 'jira';
-  description = 'Import issues from Jira JSON export file';
-
-  async validate(content: string): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-    try {
-      const data = this.parseJSON<unknown>(content);
-      const result = JiraExportSchema.safeParse(data);
-      if (!result.success) {
-        errors.push('Invalid Jira export format');
-        result.error.issues.forEach(err => errors.push(`${err.path.join('.')}: ${err.message}`));
-        return { valid: false, errors };
-      }
-      if (result.data.issues.length === 0) {
-        errors.push('No issues found in export');
-        return { valid: false, errors };
-      }
-      return { valid: true, errors: [] };
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : 'Unknown validation error');
-      return { valid: false, errors };
-    }
-  }
-
-  async import(options: ImportOptions): Promise<ImportResult> {
-    const result = this.createEmptyResult();
-    try {
-      const content = await this.getContent(options);
-      const parseResult = JiraExportSchema.safeParse(this.parseJSON<unknown>(content));
-      if (!parseResult.success) {
-        result.errors.push({ message: 'Invalid Jira export format' });
-        return result;
-      }
-      const jiraData = parseResult.data;
-      result.stats.totalItems = jiraData.issues.length;
-      
-      const epicsMap = this.extractEpics(jiraData.issues);
-      result.epics = Array.from(epicsMap.values());
-      result.stats.epicsImported = result.epics.length;
-      
-      let featureIndex = 1;
-      for (const issue of jiraData.issues) {
-        try {
-          if (issue.fields.issuetype.name.toLowerCase() === 'epic') continue;
-          const feature = this.mapIssueToFeature(issue, featureIndex, epicsMap);
-          result.features.push(feature);
-          featureIndex++;
-          result.stats.featuresImported++;
-        } catch (error) {
-          result.errors.push({
-            field: issue.key,
-            message: error instanceof Error ? error.message : 'Failed to import issue',
-            originalItem: issue,
-          });
-          result.stats.errors++;
-        }
-      }
-      
-      if (!options.dryRun && result.features.length > 0) {
-        await this.writeFeatures(result.features, options.outputFile || 'features.csv', options.merge || false);
-      }
-      result.success = result.errors.length === 0;
-      return result;
-    } catch (error) {
-      result.errors.push({ message: error instanceof Error ? error.message : 'Import failed' });
-      return result;
-    }
-  }
-
-  private extractEpics(issues: JiraIssue[]): Map<string, ImportedEpic> {
-    const epics = new Map<string, ImportedEpic>();
-    for (const issue of issues) {
-      if (issue.fields.issuetype.name.toLowerCase() === 'epic') {
-        epics.set(issue.key, {
-          id: this.sanitizeId(issue.fields.summary),
-          name: issue.fields.summary,
-          description: issue.fields.description || '',
-          originalId: issue.key,
-          originalType: 'Epic',
-        });
-      }
-    }
-    for (const issue of issues) {
-      const epicKey = issue.fields.parent?.key || issue.fields.customfield_10014;
-      if (epicKey && !epics.has(epicKey)) {
-        const parentSummary = issue.fields.parent?.fields.summary || epicKey;
-        epics.set(epicKey, {
-          id: this.sanitizeId(parentSummary),
-          name: parentSummary,
-          description: '',
-          originalId: epicKey,
-          originalType: 'Epic',
-        });
-      }
-    }
-    return epics;
-  }
-
-  private mapIssueToFeature(issue: JiraIssue, index: number, epicsMap: Map<string, ImportedEpic>): SimpleFeature {
-    const epicKey = issue.fields.parent?.key || issue.fields.customfield_10014;
-    const epic = epicKey ? epicsMap.get(epicKey) : undefined;
-    return {
-      id: this.generateFeatureId('feat', index),
-      name: issue.fields.summary,
-      description: issue.fields.description || issue.fields.summary,
-      estimate: this.convertToHours(issue.fields.timeoriginalestimate),
-      assignee: issue.fields.assignee?.displayName || 'Unassigned',
-      priority: this.mapPriority(issue.fields.priority?.name || 'medium'),
-      status: this.mapStatus(issue.fields.status.name),
-      category: epic?.name || 'Uncategorized',
-      tags: [issue.fields.issuetype.name, ...issue.fields.labels, `jira:${issue.key}`],
-      createdDate: this.formatDate(issue.fields.created),
-      dueDate: this.formatDate(issue.fields.duedate),
-    };
-  }
-}
-
-// ============================================================================
-// Linear Importer
-// ============================================================================
-
-export class LinearImporter extends BaseImporter {
-  name = 'Linear Importer';
-  source: ImportSource = 'linear';
-  description = 'Import issues from Linear JSON export file';
-
-  async validate(content: string): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-    try {
-      const data = this.parseJSON<unknown>(content);
-      const result = LinearExportSchema.safeParse(data);
-      if (!result.success) {
-        errors.push('Invalid Linear export format');
-        result.error.issues.forEach(err => errors.push(`${err.path.join('.')}: ${err.message}`));
-        return { valid: false, errors };
-      }
-      if (result.data.issues.length === 0) {
-        errors.push('No issues found in export');
-        return { valid: false, errors };
-      }
-      return { valid: true, errors: [] };
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : 'Unknown validation error');
-      return { valid: false, errors };
-    }
-  }
-
-  async import(options: ImportOptions): Promise<ImportResult> {
-    const result = this.createEmptyResult();
-    try {
-      const content = await this.getContent(options);
-      const parseResult = LinearExportSchema.safeParse(this.parseJSON<unknown>(content));
-      if (!parseResult.success) {
-        result.errors.push({ message: 'Invalid Linear export format' });
-        return result;
-      }
-      const linearData = parseResult.data;
-      result.stats.totalItems = linearData.issues.length;
-      
-      const projectsMap = this.extractProjects(linearData);
-      result.epics = Array.from(projectsMap.values());
-      result.stats.epicsImported = result.epics.length;
-      
-      let featureIndex = 1;
-      for (const issue of linearData.issues) {
-        try {
-          const feature = this.mapIssueToFeature(issue, featureIndex, projectsMap);
-          result.features.push(feature);
-          featureIndex++;
-          result.stats.featuresImported++;
-        } catch (error) {
-          result.errors.push({
-            field: issue.identifier,
-            message: error instanceof Error ? error.message : 'Failed to import issue',
-            originalItem: issue,
-          });
-          result.stats.errors++;
-        }
-      }
-      
-      if (!options.dryRun && result.features.length > 0) {
-        await this.writeFeatures(result.features, options.outputFile || 'features.csv', options.merge || false);
-      }
-      result.success = result.errors.length === 0;
-      return result;
-    } catch (error) {
-      result.errors.push({ message: error instanceof Error ? error.message : 'Import failed' });
-      return result;
-    }
-  }
-
-  private extractProjects(data: LinearExport): Map<string, ImportedEpic> {
-    const projects = new Map<string, ImportedEpic>();
-    if (data.projects) {
-      for (const project of data.projects) {
-        projects.set(project.id, {
-          id: this.sanitizeId(project.name),
-          name: project.name,
-          description: project.description || '',
-          originalId: project.id,
-          originalType: 'Project',
-        });
-      }
-    }
-    for (const issue of data.issues) {
-      if (issue.project && !projects.has(issue.project.id)) {
-        projects.set(issue.project.id, {
-          id: this.sanitizeId(issue.project.name),
-          name: issue.project.name,
-          description: issue.project.description || '',
-          originalId: issue.project.id,
-          originalType: 'Project',
-        });
-      }
-    }
-    return projects;
-  }
-
-  private mapLinearPriority(priority: number): 'low' | 'medium' | 'high' | 'critical' {
-    switch (priority) {
-      case 1: return 'critical';
-      case 2: return 'high';
-      case 3: return 'medium';
-      case 4: return 'low';
-      default: return 'medium';
-    }
-  }
-
-  private mapLinearState(state: { name: string; type: string }): 'todo' | 'in-progress' | 'done' | 'blocked' {
-    const type = state.type.toLowerCase();
-    switch (type) {
-      case 'completed':
-      case 'done': return 'done';
-      case 'started':
-      case 'inprogress': return 'in-progress';
-      case 'backlog':
-      case 'unstarted':
-      case 'triage': return 'todo';
-      case 'canceled':
-      case 'cancelled': return 'blocked';
-      default: return this.mapStatus(state.name);
-    }
-  }
-
-  private mapIssueToFeature(issue: LinearIssue, index: number, projectsMap: Map<string, ImportedEpic>): SimpleFeature {
-    const project = issue.project ? projectsMap.get(issue.project.id) : undefined;
-    const labels = issue.labels?.nodes?.map(l => l.name) || [];
-    return {
-      id: this.generateFeatureId('feat', index),
-      name: issue.title,
-      description: issue.description || issue.title,
-      estimate: issue.estimate ? issue.estimate * 4 : 8,
-      assignee: issue.assignee?.name || 'Unassigned',
-      priority: this.mapLinearPriority(issue.priority),
-      status: this.mapLinearState(issue.state),
-      category: project?.name || 'Uncategorized',
-      tags: [...labels, `linear:${issue.identifier}`],
-      createdDate: this.formatDate(issue.createdAt),
-      dueDate: this.formatDate(issue.dueDate),
-    };
-  }
-}
-
-// ============================================================================
-// GitHub Importer
-// ============================================================================
-
-const SKILL_LABEL_PREFIXES = ['skill:', 'tech:', 'language:', 'framework:'];
-
-export class GitHubImporter extends BaseImporter {
-  name = 'GitHub Issues Importer';
-  source: ImportSource = 'github';
-  description = 'Import issues from GitHub API export or JSON file';
-
-  async validate(content: string): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-    try {
-      const data = this.parseJSON<unknown>(content);
-      const normalized = Array.isArray(data) ? { issues: data } : data;
-      const result = GitHubExportSchema.safeParse(normalized);
-      if (!result.success) {
-        errors.push('Invalid GitHub export format');
-        result.error.issues.forEach(err => errors.push(`${err.path.join('.')}: ${err.message}`));
-        return { valid: false, errors };
-      }
-      if (result.data.issues.length === 0) {
-        errors.push('No issues found in export');
-        return { valid: false, errors };
-      }
-      return { valid: true, errors: [] };
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : 'Unknown validation error');
-      return { valid: false, errors };
-    }
-  }
-
-  async import(options: ImportOptions): Promise<ImportResult> {
-    const result = this.createEmptyResult();
-    try {
-      const content = await this.getContent(options);
-      const rawData = this.parseJSON<unknown>(content);
-      const normalized = Array.isArray(rawData) ? { issues: rawData } : rawData;
-      const parseResult = GitHubExportSchema.safeParse(normalized);
-      if (!parseResult.success) {
-        result.errors.push({ message: 'Invalid GitHub export format' });
-        return result;
-      }
-      const githubData = parseResult.data;
-      result.stats.totalItems = githubData.issues.length;
-      
-      const milestonesMap = this.extractMilestones(githubData);
-      result.milestones = Array.from(milestonesMap.values());
-      result.stats.milestonesImported = result.milestones.length;
-      
-      const epicsMap = this.extractEpicsFromLabels(githubData.issues);
-      result.epics = Array.from(epicsMap.values());
-      result.stats.epicsImported = result.epics.length;
-      
-      let featureIndex = 1;
-      for (const issue of githubData.issues) {
-        try {
-          const feature = this.mapIssueToFeature(issue, featureIndex, milestonesMap, epicsMap);
-          result.features.push(feature);
-          featureIndex++;
-          result.stats.featuresImported++;
-        } catch (error) {
-          result.errors.push({
-            field: `#${issue.number}`,
-            message: error instanceof Error ? error.message : 'Failed to import issue',
-            originalItem: issue,
-          });
-          result.stats.errors++;
-        }
-      }
-      
-      if (!options.dryRun && result.features.length > 0) {
-        await this.writeFeatures(result.features, options.outputFile || 'features.csv', options.merge || false);
-      }
-      result.success = result.errors.length === 0;
-      return result;
-    } catch (error) {
-      result.errors.push({ message: error instanceof Error ? error.message : 'Import failed' });
-      return result;
-    }
-  }
-
-  private extractMilestones(data: GitHubExport): Map<number, ImportedMilestone> {
-    const milestones = new Map<number, ImportedMilestone>();
-    if (data.milestones) {
-      for (const milestone of data.milestones) {
-        milestones.set(milestone.number, {
-          id: this.sanitizeId(milestone.title),
-          name: milestone.title,
-          description: milestone.description || '',
-          dueDate: this.formatDate(milestone.due_on),
-          originalId: String(milestone.number),
-        });
-      }
-    }
-    for (const issue of data.issues) {
-      if (issue.milestone && !milestones.has(issue.milestone.number)) {
-        milestones.set(issue.milestone.number, {
-          id: this.sanitizeId(issue.milestone.title),
-          name: issue.milestone.title,
-          description: issue.milestone.description || '',
-          dueDate: this.formatDate(issue.milestone.due_on),
-          originalId: String(issue.milestone.number),
-        });
-      }
-    }
-    return milestones;
-  }
-
-  private extractEpicsFromLabels(issues: GitHubIssue[]): Map<string, ImportedEpic> {
-    const epics = new Map<string, ImportedEpic>();
-    const epicPrefixes = ['epic:', 'category:', 'area:'];
-    for (const issue of issues) {
-      for (const label of issue.labels) {
-        const lowerName = label.name.toLowerCase();
-        for (const prefix of epicPrefixes) {
-          if (lowerName.startsWith(prefix)) {
-            const epicName = label.name.substring(prefix.length).trim();
-            if (!epics.has(epicName)) {
-              epics.set(epicName, {
-                id: this.sanitizeId(epicName),
-                name: epicName,
-                description: `Imported from GitHub label: ${label.name}`,
-                originalId: label.name,
-                originalType: 'Label',
-              });
-            }
-            break;
-          }
-        }
-      }
-    }
-    return epics;
-  }
-
-  private extractSkillsFromLabels(labels: { name: string }[]): string[] {
-    const skills: string[] = [];
-    for (const label of labels) {
-      const lowerName = label.name.toLowerCase();
-      for (const prefix of SKILL_LABEL_PREFIXES) {
-        if (lowerName.startsWith(prefix)) {
-          skills.push(label.name.substring(prefix.length).trim());
-          break;
-        }
-      }
-    }
-    return skills;
-  }
-
-  private extractCategoryFromLabels(labels: { name: string }[], epicsMap: Map<string, ImportedEpic>): string {
-    const epicPrefixes = ['epic:', 'category:', 'area:'];
-    for (const label of labels) {
-      const lowerName = label.name.toLowerCase();
-      for (const prefix of epicPrefixes) {
-        if (lowerName.startsWith(prefix)) {
-          const epicName = label.name.substring(prefix.length).trim();
-          if (epicsMap.has(epicName)) return epicName;
-        }
-      }
-    }
-    return 'Uncategorized';
-  }
-
-  private extractPriorityFromLabels(labels: { name: string }[]): 'low' | 'medium' | 'high' | 'critical' {
-    const priorityPrefixes = ['priority:', 'p:'];
-    for (const label of labels) {
-      const lowerName = label.name.toLowerCase();
-      for (const prefix of priorityPrefixes) {
-        if (lowerName.startsWith(prefix)) {
-          return this.mapPriority(lowerName.substring(prefix.length).trim());
-        }
-      }
-      if (['critical', 'blocker', 'urgent'].includes(lowerName)) return 'critical';
-      if (['high', 'important'].includes(lowerName)) return 'high';
-      if (['low', 'minor', 'trivial'].includes(lowerName)) return 'low';
-    }
-    return 'medium';
-  }
-
-  private extractEstimateFromLabels(labels: { name: string }[]): number {
-    const estimatePrefixes = ['estimate:', 'size:', 'points:'];
-    for (const label of labels) {
-      const lowerName = label.name.toLowerCase();
-      for (const prefix of estimatePrefixes) {
-        if (lowerName.startsWith(prefix)) {
-          const value = lowerName.substring(prefix.length).trim();
-          const parsed = parseInt(value, 10);
-          if (!isNaN(parsed)) return parsed * 4;
-        }
-      }
-      if (['xs', 'extra-small'].includes(lowerName)) return 2;
-      if (['s', 'small'].includes(lowerName)) return 4;
-      if (['m', 'medium'].includes(lowerName)) return 8;
-      if (['l', 'large'].includes(lowerName)) return 16;
-      if (['xl', 'extra-large'].includes(lowerName)) return 32;
-    }
-    return 8;
-  }
-
-  private mapIssueToFeature(
-    issue: GitHubIssue,
-    index: number,
-    milestonesMap: Map<number, ImportedMilestone>,
-    epicsMap: Map<string, ImportedEpic>
-  ): SimpleFeature {
-    const category = this.extractCategoryFromLabels(issue.labels, epicsMap);
-    const priority = this.extractPriorityFromLabels(issue.labels);
-    const status = issue.state === 'closed' ? 'done' : 'todo';
-    const estimate = this.extractEstimateFromLabels(issue.labels);
-    const assignee = issue.assignee?.login || 
-      (issue.assignees && issue.assignees.length > 0 ? issue.assignees[0].login : 'Unassigned');
-    
-    const skills = this.extractSkillsFromLabels(issue.labels);
-    const otherLabels = issue.labels.map(l => l.name).filter(name => {
-      const lower = name.toLowerCase();
-      const excludePrefixes = [...SKILL_LABEL_PREFIXES, 'epic:', 'category:', 'area:', 'priority:', 'p:', 'estimate:', 'size:', 'points:'];
-      return !excludePrefixes.some(p => lower.startsWith(p)) &&
-        !['critical', 'blocker', 'urgent', 'high', 'important', 'low', 'minor', 'trivial',
-          'xs', 'extra-small', 's', 'small', 'm', 'medium', 'l', 'large', 'xl', 'extra-large'].includes(lower);
-    });
-    
-    const tags = [...skills, ...otherLabels, `github:#${issue.number}`];
-    if (issue.milestone) tags.push(`milestone:${issue.milestone.title}`);
-    
-    return {
-      id: this.generateFeatureId('feat', index),
-      name: issue.title,
-      description: issue.body || issue.title,
-      estimate,
-      assignee,
-      priority,
-      status,
-      category,
-      tags,
-      createdDate: this.formatDate(issue.created_at),
-      dueDate: issue.milestone?.due_on ? this.formatDate(issue.milestone.due_on) : undefined,
-    };
-  }
-}
-
-// ============================================================================
-// Importer Registry
-// ============================================================================
-
-export const jiraImporter = new JiraImporter();
-export const linearImporter = new LinearImporter();
-export const githubImporter = new GitHubImporter();
-
-const importerRegistry: Record<ImportSource, Importer> = {
-  jira: jiraImporter,
-  linear: linearImporter,
-  github: githubImporter,
+const STATUS_ALIASES: Record<string, Status> = {
+  todo: 'todo',
+  待办: 'todo',
+  planning: 'todo',
+  计划中: 'todo',
+  'in-progress': 'in-progress',
+  'in progress': 'in-progress',
+  进行中: 'in-progress',
+  doing: 'in-progress',
+  done: 'done',
+  完成: 'done',
+  已完成: 'done',
+  completed: 'done',
+  blocked: 'blocked',
+  阻塞: 'blocked',
+  被阻塞: 'blocked',
 };
 
-export function getImporter(source: ImportSource): Importer {
-  const importer = importerRegistry[source];
-  if (!importer) throw new Error(`Unknown import source: ${source}`);
-  return importer;
+export function mapStatus(value: string | undefined): Status {
+  if (!value) return 'todo';
+  return STATUS_ALIASES[value.trim().toLowerCase()] ?? 'todo';
 }
 
-export function getAllImporters(): Importer[] {
-  return Object.values(importerRegistry);
+const PRIORITY_ALIASES: Record<string, Priority> = {
+  low: 'low',
+  低: 'low',
+  medium: 'medium',
+  中: 'medium',
+  普通: 'medium',
+  high: 'high',
+  高: 'high',
+  critical: 'critical',
+  紧急: 'critical',
+  最高: 'critical',
+};
+
+export function mapPriority(value: string | undefined): Priority {
+  if (!value) return 'medium';
+  return PRIORITY_ALIASES[value.trim().toLowerCase()] ?? 'medium';
 }
 
-export function isValidSource(source: string): source is ImportSource {
-  return source in importerRegistry;
+export function parseHours(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(?:h|hours?|小时)?$/i);
+  if (!match) return undefined;
+  const num = Number(match[1]);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
+/* ---------- 格式探测 ---------- */
+
+export async function detectFormat(target: string): Promise<ImportFormat> {
+  const info = await stat(target);
+  if (info.isDirectory()) return 'v1-pmspace';
+  const content = await readFile(target, 'utf-8');
+  const firstLine = content.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
+  if (firstLine.startsWith('ID,功能名称')) return 'v1-csv';
+  return 'csv';
+}
+
+/* ---------- v1 简单模型 CSV ---------- */
+
+// v1 列: ID,功能名称,描述,预估工作量(h),分配给,优先级,状态,分组,标签,创建日期,截止日期
+export function importV1Csv(content: string): ImportResult {
+  const rows = parseCsv(content);
+  const result: ImportResult = {
+    format: 'v1-csv',
+    epics: [],
+    features: [],
+    stories: [],
+    warnings: [],
+  };
+  if (rows.length < 2) {
+    result.warnings.push('CSV 中没有数据行');
+    return result;
+  }
+  const categories = new Map<string, ImportedEpic>();
+  for (const row of rows.slice(1)) {
+    const [id, name, description, estimate, assignee, priority, status, category, tags] = row;
+    if (!name) {
+      result.warnings.push(`跳过缺少功能名称的行: ${row.join(',')}`);
+      continue;
+    }
+    const epicRef = category?.trim() || undefined;
+    if (epicRef && !categories.has(epicRef)) {
+      categories.set(epicRef, {
+        fm: { title: epicRef, status: 'todo', tags: [] },
+        body: `由 v1 分组 "${epicRef}" 迁移生成。`,
+      });
+    }
+    result.features.push({
+      fm: {
+        id: /^FEAT-\d{3,}$/.test(id ?? '') ? id : undefined,
+        title: name,
+        status: mapStatus(status),
+        priority: mapPriority(priority),
+        assignee: assignee?.trim() || undefined,
+        estimate: parseHours(estimate),
+        skills: [],
+        tags: tags ? tags.split(';').map((t) => t.trim()).filter(Boolean) : [],
+      },
+      body: description?.trim() || '',
+      epicRef,
+    });
+  }
+  result.epics = [...categories.values()];
+  return result;
+}
+
+/* ---------- v1 富模型 pmspace/ 目录 ---------- */
+
+function fieldOf(content: string, name: string): string | undefined {
+  const re = new RegExp(`^-\\s*\\*\\*${name}\\*\\*\\s*[:：]\\s*(.+)$`, 'mi');
+  const match = content.match(re);
+  return match?.[1]?.trim();
+}
+
+function titleOf(content: string, kind: string): string | undefined {
+  const re = new RegExp(`^#\\s*${kind}\\s*[:：]\\s*(.+)$`, 'mi');
+  return content.match(re)?.[1]?.trim();
+}
+
+function sectionOf(content: string, heading: string): string | undefined {
+  const re = new RegExp(`^##\\s*${heading}\\s*$([\\s\\S]*?)(?=^##\\s|\\s*$(?![\\s\\S]))`, 'mi');
+  const match = content.match(re);
+  return match?.[1]?.trim();
+}
+
+/** v1 富模型 feature 文件里的 user story 行: `- [ ] STORY-001: 描述 (4h)` */
+const V1_STORY_RE = /^-\s*\[( |x|X)\]\s*(STORY-\d{3,})\s*[:：]\s*(.+?)(?:\s*[（(](\d+(?:\.\d+)?)\s*h[）)])?\s*$/gm;
+
+export async function importV1Pmspace(dir: string): Promise<ImportResult> {
+  const result: ImportResult = {
+    format: 'v1-pmspace',
+    epics: [],
+    features: [],
+    stories: [],
+    warnings: [],
+  };
+
+  const readDirMd = async (sub: string): Promise<Array<{ file: string; content: string }>> => {
+    const target = path.join(dir, sub);
+    if (!existsSync(target)) return [];
+    const files = await readdir(target);
+    const out: Array<{ file: string; content: string }> = [];
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
+      out.push({
+        file: path.join(target, file),
+        content: await readFile(path.join(target, file), 'utf-8'),
+      });
+    }
+    return out;
+  };
+
+  for (const { file, content } of await readDirMd('epics')) {
+    const id = fieldOf(content, 'ID');
+    const title = titleOf(content, 'Epic');
+    if (!title) {
+      result.warnings.push(`跳过无法解析标题的 Epic 文件: ${file}`);
+      continue;
+    }
+    result.epics.push({
+      fm: {
+        id: id && /^EPIC-\d{3,}$/.test(id) ? id : undefined,
+        title,
+        status: mapStatus(fieldOf(content, 'Status')),
+        owner: fieldOf(content, 'Owner'),
+        estimate: parseHours(fieldOf(content, 'Estimate')),
+        actual: parseHours(fieldOf(content, 'Actual')),
+        tags: [],
+      },
+      body: sectionOf(content, 'Description') ?? '',
+    });
+  }
+
+  for (const { file, content } of await readDirMd('features')) {
+    const id = fieldOf(content, 'ID');
+    const title = titleOf(content, 'Feature');
+    if (!title) {
+      result.warnings.push(`跳过无法解析标题的 Feature 文件: ${file}`);
+      continue;
+    }
+    const skills = fieldOf(content, 'Skills Required');
+    const featureId = id && /^FEAT-\d{3,}$/.test(id) ? id : undefined;
+    const bodyParts: string[] = [];
+    const description = sectionOf(content, 'Description');
+    if (description) bodyParts.push(description);
+    const acceptance = sectionOf(content, 'Acceptance Criteria');
+    if (acceptance) bodyParts.push(`## 验收标准\n\n${acceptance}`);
+    result.features.push({
+      fm: {
+        id: featureId,
+        title,
+        status: mapStatus(fieldOf(content, 'Status')),
+        priority: mapPriority(fieldOf(content, 'Priority')),
+        assignee: fieldOf(content, 'Assignee'),
+        estimate: parseHours(fieldOf(content, 'Estimate')),
+        actual: parseHours(fieldOf(content, 'Actual')),
+        skills: skills ? skills.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : [],
+        tags: [],
+      },
+      body: bodyParts.join('\n\n'),
+      epicRef: fieldOf(content, 'Epic'),
+    });
+
+    // Feature 正文中的 user story 清单 → Story 实体
+    if (featureId) {
+      for (const match of content.matchAll(V1_STORY_RE)) {
+        const [, checked, storyId, text, hours] = match;
+        result.stories.push({
+          fm: {
+            id: storyId,
+            title: text.trim(),
+            status: checked.toLowerCase() === 'x' ? 'done' : 'todo',
+            estimate: hours ? Number(hours) : undefined,
+          },
+          body: '',
+          featureRef: featureId,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+/* ---------- 通用 CSV ---------- */
+
+const HEADER_ALIASES: Record<string, string> = {
+  title: 'title',
+  name: 'title',
+  feature: 'title',
+  功能: 'title',
+  功能名称: 'title',
+  标题: 'title',
+  description: 'description',
+  描述: 'description',
+  说明: 'description',
+  estimate: 'estimate',
+  'estimate(h)': 'estimate',
+  hours: 'estimate',
+  工时: 'estimate',
+  预估: 'estimate',
+  '预估工作量(h)': 'estimate',
+  assignee: 'assignee',
+  owner: 'assignee',
+  负责人: 'assignee',
+  分配给: 'assignee',
+  status: 'status',
+  状态: 'status',
+  priority: 'priority',
+  优先级: 'priority',
+  epic: 'epic',
+  category: 'epic',
+  分组: 'epic',
+  模块: 'epic',
+  tags: 'tags',
+  标签: 'tags',
+  id: 'id',
+};
+
+export function importGenericCsv(content: string): ImportResult {
+  const rows = parseCsv(content);
+  const result: ImportResult = {
+    format: 'csv',
+    epics: [],
+    features: [],
+    stories: [],
+    warnings: [],
+  };
+  if (rows.length < 2) {
+    result.warnings.push('CSV 中没有数据行');
+    return result;
+  }
+  const header = rows[0].map((h) => HEADER_ALIASES[h.trim().toLowerCase()] ?? '');
+  if (!header.includes('title')) {
+    throw new Error(
+      'CSV 缺少标题列（可识别列名：title/name/功能名称/标题 等）'
+    );
+  }
+  const categories = new Map<string, ImportedEpic>();
+  for (const row of rows.slice(1)) {
+    const record: Record<string, string> = {};
+    header.forEach((key, index) => {
+      if (key && row[index]) record[key] = row[index];
+    });
+    if (!record.title) {
+      result.warnings.push(`跳过缺少标题的行: ${row.join(',')}`);
+      continue;
+    }
+    const epicRef = record.epic?.trim() || undefined;
+    if (epicRef && !categories.has(epicRef)) {
+      categories.set(epicRef, {
+        fm: { title: epicRef, status: 'todo', tags: [] },
+        body: '',
+      });
+    }
+    result.features.push({
+      fm: {
+        id: /^FEAT-\d{3,}$/.test(record.id ?? '') ? record.id : undefined,
+        title: record.title,
+        status: mapStatus(record.status),
+        priority: mapPriority(record.priority),
+        assignee: record.assignee || undefined,
+        estimate: parseHours(record.estimate),
+        skills: [],
+        tags: record.tags
+          ? record.tags.split(/[;，,]/).map((t) => t.trim()).filter(Boolean)
+          : [],
+      },
+      body: record.description ?? '',
+      epicRef,
+    });
+  }
+  result.epics = [...categories.values()];
+  return result;
+}
+
+/** 按 target 自动探测并导入 */
+export async function runImport(target: string, format?: ImportFormat): Promise<ImportResult> {
+  const resolved = format ?? (await detectFormat(target));
+  switch (resolved) {
+    case 'v1-pmspace':
+      return importV1Pmspace(target);
+    case 'v1-csv':
+      return importV1Csv(await readFile(target, 'utf-8'));
+    case 'csv':
+      return importGenericCsv(await readFile(target, 'utf-8'));
+  }
 }

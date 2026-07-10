@@ -1,224 +1,178 @@
 import { Command } from 'commander';
-import chalk from 'chalk';
+import path from 'path';
+import { existsSync } from 'fs';
 import {
-  getImporter,
-  getAllImporters,
-  isValidSource,
-  type ImportSource,
-  type ImportResult,
+  ImportFormat,
+  ImportResult,
+  runImport,
 } from '../core/importers.js';
+import { EntityKind, ID_PREFIX } from '../core/schema.js';
+import { Workspace, nextId, writeEntity } from '../core/workspace.js';
+import { fail, ok, printJson, warn, requireWorkspace } from '../cli/output.js';
 
-const importCommand = new Command('import')
-  .description('从外部工具导入功能数据')
-  .argument('<source>', '导入源: jira, linear, github')
-  .option('--file <path>', '导入文件路径')
-  .option('--output <file>', '输出文件路径', 'features.csv')
-  .option('--dry-run', '预览导入结果，不实际写入文件')
-  .option('--merge', '合并到现有项目而不是覆盖')
-  .action(async (source: string, options) => {
-    try {
-      // Validate source
-      if (!isValidSource(source)) {
-        const availableSources = getAllImporters().map(i => i.source).join(', ');
-        console.error(chalk.red(`错误: 不支持的导入源 "${source}"`));
-        console.error(chalk.yellow(`可用的导入源: ${availableSources}`));
-        process.exit(1);
-      }
-
-      // Validate file option
-      if (!options.file) {
-        console.error(chalk.red('错误: 必须指定 --file 参数'));
-        process.exit(1);
-      }
-
-      const importer = getImporter(source as ImportSource);
-      console.log(chalk.blue(`\n📥 ${importer.name}`));
-      console.log(chalk.gray(`${importer.description}\n`));
-
-      // Perform import
-      const result = await importer.import({
-        file: options.file,
-        dryRun: options.dryRun || false,
-        merge: options.merge || false,
-        outputFile: options.output,
-      });
-
-      // Display results
-      displayImportResult(result, options.dryRun);
-
-    } catch (error: any) {
-      console.error(chalk.red('导入失败:'), error.message);
-      process.exit(1);
+/** 从工作区现有最大序号开始的连续 ID 分配器 */
+function makeAllocator(ws: Workspace, kind: EntityKind, taken: Set<string>) {
+  let counter = Number(nextId(ws, kind).split('-')[1]);
+  return (preferred?: string): string => {
+    if (preferred && !taken.has(preferred)) {
+      taken.add(preferred);
+      return preferred;
     }
-  });
+    let id: string;
+    do {
+      id = `${ID_PREFIX[kind]}-${String(counter).padStart(3, '0')}`;
+      counter++;
+    } while (taken.has(id));
+    taken.add(id);
+    return id;
+  };
+}
 
-// Jira subcommand
-const jiraCommand = new Command('jira')
-  .description('从 Jira JSON 导出文件导入')
-  .option('--file <path>', 'Jira 导出文件路径 (必需)')
-  .option('--output <file>', '输出文件路径', 'features.csv')
-  .option('--dry-run', '预览导入结果')
-  .option('--merge', '合并到现有项目')
-  .action(async (options) => {
-    await runImport('jira', options);
-  });
+interface PlannedEntity {
+  kind: EntityKind;
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
 
-// Linear subcommand
-const linearCommand = new Command('linear')
-  .description('从 Linear JSON 导出文件导入')
-  .option('--file <path>', 'Linear 导出文件路径 (必需)')
-  .option('--output <file>', '输出文件路径', 'features.csv')
-  .option('--dry-run', '预览导入结果')
-  .option('--merge', '合并到现有项目')
-  .action(async (options) => {
-    await runImport('linear', options);
-  });
+/** 将导入结果映射为待写入实体：分配最终 ID、解析 Epic/Feature 引用 */
+export function planImport(
+  ws: Workspace,
+  result: ImportResult
+): { planned: PlannedEntity[]; warnings: string[] } {
+  const warnings = [...result.warnings];
+  const existingIds = new Set(
+    [...ws.epics, ...ws.features, ...ws.stories].map((item) => item.entity.id)
+  );
+  const allocEpic = makeAllocator(ws, 'epic', existingIds);
+  const allocFeature = makeAllocator(ws, 'feature', existingIds);
+  const allocStory = makeAllocator(ws, 'story', existingIds);
+  const planned: PlannedEntity[] = [];
 
-// GitHub subcommand
-const githubCommand = new Command('github')
-  .description('从 GitHub Issues JSON 文件导入')
-  .option('--file <path>', 'GitHub 导出文件路径 (必需)')
-  .option('--output <file>', '输出文件路径', 'features.csv')
-  .option('--dry-run', '预览导入结果')
-  .option('--merge', '合并到现有项目')
-  .action(async (options) => {
-    await runImport('github', options);
-  });
-
-// Add subcommands
-importCommand.addCommand(jiraCommand);
-importCommand.addCommand(linearCommand);
-importCommand.addCommand(githubCommand);
-
-async function runImport(source: ImportSource, options: any) {
-  try {
-    if (!options.file) {
-      console.error(chalk.red('错误: 必须指定 --file 参数'));
-      process.exit(1);
+  // epicRef（v1 EPIC id 或分组名）→ 最终 epic id
+  const epicIdByRef = new Map<string, string>();
+  for (const epic of result.epics) {
+    const preferred = epic.fm.id;
+    const id = allocEpic(preferred);
+    if (preferred && id !== preferred) {
+      warnings.push(`${preferred} 已存在，改用新 ID ${id}`);
     }
+    epicIdByRef.set(preferred ?? epic.fm.title, id);
+    planned.push({ kind: 'epic', frontmatter: { ...epic.fm, id }, body: epic.body });
+  }
 
-    const importer = getImporter(source);
-    console.log(chalk.blue(`\n📥 ${importer.name}`));
-    console.log(chalk.gray(`${importer.description}\n`));
+  const featureIdByRef = new Map<string, string>();
+  for (const feature of result.features) {
+    const preferred = feature.fm.id;
+    const id = allocFeature(preferred);
+    if (preferred && id !== preferred) {
+      warnings.push(`${preferred} 已存在，改用新 ID ${id}`);
+    }
+    if (preferred) featureIdByRef.set(preferred, id);
+    const frontmatter: Record<string, unknown> = { ...feature.fm, id };
+    if (feature.epicRef) {
+      const epicId =
+        epicIdByRef.get(feature.epicRef) ??
+        (ws.epics.some((e) => e.entity.id === feature.epicRef)
+          ? feature.epicRef
+          : undefined);
+      if (epicId) {
+        frontmatter.epic = epicId;
+      } else {
+        warnings.push(`${id} 引用的 Epic "${feature.epicRef}" 未找到，已置空`);
+      }
+    }
+    planned.push({ kind: 'feature', frontmatter, body: feature.body });
+  }
 
-    const result = await importer.import({
-      file: options.file,
-      dryRun: options.dryRun || false,
-      merge: options.merge || false,
-      outputFile: options.output,
+  for (const story of result.stories) {
+    const featureId =
+      featureIdByRef.get(story.featureRef) ??
+      (existingIds.has(story.featureRef) ? story.featureRef : undefined);
+    if (!featureId) {
+      warnings.push(`跳过 ${story.fm.title}: 父 Feature "${story.featureRef}" 未找到`);
+      continue;
+    }
+    const preferred = story.fm.id;
+    const id = allocStory(preferred);
+    if (preferred && id !== preferred) {
+      warnings.push(`${preferred} 已存在，改用新 ID ${id}`);
+    }
+    planned.push({
+      kind: 'story',
+      frontmatter: { ...story.fm, id, feature: featureId },
+      body: story.body,
     });
-
-    displayImportResult(result, options.dryRun);
-
-  } catch (error: any) {
-    console.error(chalk.red('导入失败:'), error.message);
-    process.exit(1);
   }
+
+  return { planned, warnings };
 }
 
-function displayImportResult(result: ImportResult, dryRun: boolean) {
-  const { stats, errors, warnings, features, epics, milestones } = result;
-
-  // Header
-  if (dryRun) {
-    console.log(chalk.yellow('🔍 预览模式 - 不会写入任何文件\n'));
-  }
-
-  // Statistics
-  console.log(chalk.blue.bold('📊 导入统计'));
-  console.log(chalk.gray('─'.repeat(40)));
-  console.log(`总项目数:       ${stats.totalItems}`);
-  console.log(`导入功能:       ${chalk.green(stats.featuresImported)}`);
-  console.log(`导入 Epic:      ${chalk.cyan(stats.epicsImported)}`);
-  console.log(`导入 Milestone: ${chalk.cyan(stats.milestonesImported)}`);
-  console.log(`跳过:           ${stats.skipped}`);
-  console.log(`错误:           ${stats.errors > 0 ? chalk.red(stats.errors) : stats.errors}`);
-  console.log(chalk.gray('─'.repeat(40)));
-
-  // Epics summary
-  if (epics.length > 0) {
-    console.log(chalk.cyan.bold('\n📁 Epic/分类'));
-    for (const epic of epics) {
-      console.log(`  • ${epic.name} ${chalk.gray(`(${epic.originalId})`)}`);
-    }
-  }
-
-  // Milestones summary
-  if (milestones.length > 0) {
-    console.log(chalk.cyan.bold('\n🎯 Milestones'));
-    for (const milestone of milestones) {
-      const dueInfo = milestone.dueDate ? chalk.gray(` 截止: ${milestone.dueDate}`) : '';
-      console.log(`  • ${milestone.name}${dueInfo}`);
-    }
-  }
-
-  // Features preview (first 5)
-  if (features.length > 0) {
-    console.log(chalk.green.bold('\n✨ 功能预览 (前5项)'));
-    const previewFeatures = features.slice(0, 5);
-    for (const feature of previewFeatures) {
-      const priorityColor = getPriorityColor(feature.priority);
-      const statusColor = getStatusColor(feature.status);
-      console.log(`  ${chalk.gray(feature.id)} ${feature.name}`);
-      console.log(`    ${priorityColor(feature.priority)} | ${statusColor(feature.status)} | ${feature.assignee} | ${feature.estimate}h`);
-      if (feature.category) {
-        console.log(`    ${chalk.gray('分类:')} ${feature.category}`);
+export const importCommand = new Command('import')
+  .description('从 v1 数据（features.csv / pmspace 富模型目录）或通用 CSV 导入')
+  .argument('<target>', '文件或目录路径')
+  .option('--format <format>', 'v1-csv | v1-pmspace | csv（默认自动探测）')
+  .option('--dry-run', '只显示将要创建的内容，不写盘')
+  .option('--json', '以 JSON 输出结果')
+  .action(
+    async (
+      target: string,
+      options: { format?: ImportFormat; dryRun?: boolean; json?: boolean }
+    ) => {
+      if (!existsSync(target)) fail(`路径不存在: ${target}`);
+      if (
+        options.format &&
+        !['v1-csv', 'v1-pmspace', 'csv'].includes(options.format)
+      ) {
+        fail(`未知格式 "${options.format}"，可选: v1-csv | v1-pmspace | csv`);
       }
+      const ws = await requireWorkspace();
+
+      let result: ImportResult;
+      try {
+        result = await runImport(path.resolve(target), options.format);
+      } catch (error) {
+        return fail((error as Error).message);
+      }
+      const { planned, warnings } = planImport(ws, result);
+
+      if (options.dryRun) {
+        if (options.json) {
+          printJson({
+            format: result.format,
+            dryRun: true,
+            entities: planned.map((p) => ({
+              kind: p.kind,
+              id: p.frontmatter.id,
+              title: p.frontmatter.title,
+            })),
+            warnings,
+          });
+          return;
+        }
+        console.log(`格式: ${result.format}（dry-run，未写盘）`);
+        for (const item of planned) {
+          console.log(`  + [${item.kind}] ${item.frontmatter.id}: ${item.frontmatter.title}`);
+        }
+        for (const message of warnings) warn(message);
+        return;
+      }
+
+      const written: string[] = [];
+      for (const item of planned) {
+        const file = await writeEntity(ws, item.kind, item.frontmatter, item.body);
+        written.push(path.relative(ws.root, file));
+      }
+
+      if (options.json) {
+        printJson({ format: result.format, written, warnings });
+        return;
+      }
+      ok(
+        `已导入 ${planned.filter((p) => p.kind === 'epic').length} epics / ` +
+          `${planned.filter((p) => p.kind === 'feature').length} features / ` +
+          `${planned.filter((p) => p.kind === 'story').length} stories（格式: ${result.format}）`
+      );
+      for (const message of warnings) warn(message);
+      console.log('\n建议运行 pmspec validate 复核导入结果');
     }
-    if (features.length > 5) {
-      console.log(chalk.gray(`  ... 还有 ${features.length - 5} 个功能`));
-    }
-  }
-
-  // Errors
-  if (errors.length > 0) {
-    console.log(chalk.red.bold('\n❌ 错误'));
-    for (const error of errors) {
-      const location = error.field ? `[${error.field}] ` : '';
-      console.log(`  • ${location}${error.message}`);
-    }
-  }
-
-  // Warnings
-  if (warnings.length > 0) {
-    console.log(chalk.yellow.bold('\n⚠️ 警告'));
-    for (const warning of warnings) {
-      const location = warning.field ? `[${warning.field}] ` : '';
-      console.log(`  • ${location}${warning.message}`);
-    }
-  }
-
-  // Final status
-  console.log();
-  if (result.success) {
-    if (dryRun) {
-      console.log(chalk.green('✓ 预览完成 - 移除 --dry-run 以执行实际导入'));
-    } else {
-      console.log(chalk.green(`✓ 导入成功 - 已保存到 features.csv`));
-    }
-  } else {
-    console.log(chalk.red('✗ 导入存在错误，请检查并修复'));
-  }
-}
-
-function getPriorityColor(priority: string): (text: string) => string {
-  switch (priority) {
-    case 'critical': return (text: string) => chalk.red(text);
-    case 'high': return (text: string) => chalk.yellow(text);
-    case 'medium': return (text: string) => chalk.blue(text);
-    case 'low': return (text: string) => chalk.gray(text);
-    default: return (text: string) => text;
-  }
-}
-
-function getStatusColor(status: string): (text: string) => string {
-  switch (status) {
-    case 'done': return (text: string) => chalk.green(text);
-    case 'in-progress': return (text: string) => chalk.blue(text);
-    case 'blocked': return (text: string) => chalk.red(text);
-    case 'todo': return (text: string) => chalk.gray(text);
-    default: return (text: string) => text;
-  }
-}
-
-export { importCommand };
+  );
