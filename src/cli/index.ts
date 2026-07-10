@@ -4,7 +4,6 @@ import chalk from 'chalk';
 
 // Import only simple mode commands
 import { simpleCommand, generateCommand as simpleGenerateCommand, listCommand as simpleListCommand, statsCommand } from '../commands/simple.js';
-import { serveCommand } from '../commands/serve.js';
 import { historyCommand } from '../commands/history.js';
 import { searchCommand } from '../commands/search.js';
 import { importCommand } from '../commands/import.js';
@@ -21,9 +20,6 @@ program.addCommand(simpleCommand);
 simpleCommand.addCommand(simpleGenerateCommand);
 simpleCommand.addCommand(simpleListCommand);
 simpleCommand.addCommand(statsCommand);
-
-// Add serve command (Web UI)
-program.addCommand(serveCommand);
 
 // Add history command (changelog)
 program.addCommand(historyCommand);
