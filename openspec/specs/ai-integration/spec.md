@@ -5,7 +5,7 @@ TBD - created by archiving change redesign-pmspec-v2. Update Purpose after archi
 ## Requirements
 ### Requirement: Agent 原生操作
 
-AI 集成 MUST 以 agent 直接操作为形态：agent skills（`.claude/skills/pmspec-*`）直接读写 `pmspace/` 文件并调用 CLI 的 `--json` 接口完成需求分解、估算、细化与分配建议。产品的任何工作流 MUST NOT 要求用户在 AI 与工具之间手动复制粘贴 prompt 或输出。
+AI 集成 MUST 以 agent 直接操作为形态：agent skills（`.claude/commands/pmspec-*`）直接读写 `pmspace/` 文件并调用 CLI 的 `--json` 接口完成需求分解、估算、细化与分配建议。产品的任何工作流 MUST NOT 要求用户在 AI 与工具之间手动复制粘贴 prompt 或输出。
 
 #### Scenario: 需求分解直接落盘
 

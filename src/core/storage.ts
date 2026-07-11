@@ -19,9 +19,31 @@ export interface RawEntityFile {
 export function parseEntityFile(content: string): RawEntityFile {
   const parsed = matter(content);
   return {
-    data: parsed.data as Record<string, unknown>,
+    data: normalizeDates(parsed.data as Record<string, unknown>),
     body: parsed.content.trim(),
   };
+}
+
+/**
+ * js-yaml 会把 `2024-01-01` 这类字面量解析成 Date 对象，回写时变成
+ * 完整 ISO 时间戳，破坏往返保真。统一还原为字符串：纯日期还原为
+ * YYYY-MM-DD，其余用 ISO 串。
+ */
+function normalizeDates(value: Record<string, unknown>): Record<string, unknown> {
+  const walk = (v: unknown): unknown => {
+    if (v instanceof Date) {
+      const iso = v.toISOString();
+      return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, inner] of Object.entries(v)) out[k] = walk(inner);
+      return out;
+    }
+    return v;
+  };
+  return walk(value) as Record<string, unknown>;
 }
 
 /** 序列化为带 frontmatter 的 Markdown。undefined 值的键会被剔除。 */

@@ -40,10 +40,11 @@ function filterRows<T extends { status: Status; assignee?: string; epic?: string
 }
 
 function listEpics(ws: Workspace, options: ListOptions): void {
+  // Epic 没有 assignee 字段，--assignee 按 owner 匹配
   const rows = filterRows(
-    ws.epics.map((e) => ({ ...e.entity })),
+    ws.epics.map((e) => ({ ...e.entity, assignee: e.entity.owner })),
     options
-  );
+  ).map(({ assignee: _assignee, ...rest }) => rest);
   if (options.json) return printJson(rows.map(({ body: _body, ...rest }) => rest));
   if (rows.length === 0) return console.log('（无 Epic）');
   const table = new Table({ head: ['ID', '标题', '状态', 'Owner', '估算(h)'] });
@@ -107,6 +108,13 @@ export const listCommand = new Command('list')
   .option('--epic <id>', '按所属 Epic 过滤')
   .option('--json', '以 JSON 输出')
   .action(async (kindArg: string, options: ListOptions) => {
+    if (options.status) {
+      options.status = options.status.toLowerCase();
+      const valid = ['todo', 'in-progress', 'done', 'blocked'];
+      if (!valid.includes(options.status)) {
+        fail(`非法状态 "${options.status}"，可选: ${valid.join(' | ')}`);
+      }
+    }
     const ws = await requireWorkspace();
     const kind = kindArg.toLowerCase();
     switch (kind) {
@@ -121,12 +129,29 @@ export const listCommand = new Command('list')
         return listStories(ws, options);
       case 'all': {
         if (options.json) {
-          const strip = <T extends { body: string }>(loaded: Array<{ entity: T }>) =>
-            loaded.map(({ entity: { body: _body, ...rest } }) => rest);
+          // 与表格输出同样应用过滤器
+          const featureEpic = new Map(
+            ws.features.map((f) => [f.entity.id, f.entity.epic])
+          );
+          const strip = <T extends { body?: string; assignee?: string }>(rows: T[]) =>
+            rows.map(({ body: _body, ...rest }) => rest);
           return printJson({
-            epics: strip(ws.epics),
-            features: strip(ws.features),
-            stories: strip(ws.stories),
+            epics: strip(
+              filterRows(
+                ws.epics.map((e) => ({ ...e.entity, assignee: e.entity.owner })),
+                options
+              ).map(({ assignee: _assignee, ...rest }) => rest)
+            ),
+            features: strip(filterRows(ws.features.map((f) => ({ ...f.entity })), options)),
+            stories: strip(
+              filterRows(
+                ws.stories.map((s) => ({
+                  ...s.entity,
+                  epic: featureEpic.get(s.entity.feature),
+                })),
+                options
+              )
+            ),
           });
         }
         console.log(chalk.bold('\nEpics'));

@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import {
+  EPIC_ID_RE,
   EpicFrontmatter,
   FeatureFrontmatter,
   Priority,
@@ -64,7 +65,9 @@ export function parseCsv(content: string): string[][] {
       } else {
         field += ch;
       }
-    } else if (ch === '"') {
+    } else if (ch === '"' && field === '') {
+      // 只有字段起始处的引号才开启引用模式；字段中间的裸引号按字面处理，
+      // 避免一个笔误引号把文件剩余内容全部吞进单个字段
       inQuotes = true;
     } else if (ch === ',') {
       row.push(field);
@@ -168,7 +171,8 @@ export function importV1Csv(content: string): ImportResult {
       continue;
     }
     const epicRef = category?.trim() || undefined;
-    if (epicRef && !categories.has(epicRef)) {
+    // 分组列本身就是 EPIC-xxx 时视为对现有 Epic 的引用，不再新建分组 Epic
+    if (epicRef && !EPIC_ID_RE.test(epicRef) && !categories.has(epicRef)) {
       categories.set(epicRef, {
         fm: { title: epicRef, status: 'todo', tags: [] },
         body: `由 v1 分组 "${epicRef}" 迁移生成。`,
@@ -299,7 +303,8 @@ export async function importV1Pmspace(dir: string): Promise<ImportResult> {
             id: storyId,
             title: text.trim(),
             status: checked.toLowerCase() === 'x' ? 'done' : 'todo',
-            estimate: hours ? Number(hours) : undefined,
+            // 与 parseHours 同语义：非正数（如 "(0h)"）省略而不是写出非法估算
+            estimate: hours ? parseHours(hours) : undefined,
           },
           body: '',
           featureRef: featureId,
@@ -376,7 +381,8 @@ export function importGenericCsv(content: string): ImportResult {
       continue;
     }
     const epicRef = record.epic?.trim() || undefined;
-    if (epicRef && !categories.has(epicRef)) {
+    // epic 列是 EPIC-xxx 时视为对现有 Epic 的引用（支持 pmspec export 的 CSV 回导）
+    if (epicRef && !EPIC_ID_RE.test(epicRef) && !categories.has(epicRef)) {
       categories.set(epicRef, {
         fm: { title: epicRef, status: 'todo', tags: [] },
         body: '',

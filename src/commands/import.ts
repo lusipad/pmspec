@@ -6,13 +6,22 @@ import {
   ImportResult,
   runImport,
 } from '../core/importers.js';
-import { EntityKind, ID_PREFIX } from '../core/schema.js';
-import { Workspace, nextId, writeEntity } from '../core/workspace.js';
+import { EntityKind, ID_PREFIX, FRONTMATTER_SCHEMAS } from '../core/schema.js';
+import { Workspace, formatZodError, writeEntity } from '../core/workspace.js';
 import { fail, ok, printJson, warn, requireWorkspace } from '../cli/output.js';
 
-/** 从工作区现有最大序号开始的连续 ID 分配器 */
-function makeAllocator(ws: Workspace, kind: EntityKind, taken: Set<string>) {
-  let counter = Number(nextId(ws, kind).split('-')[1]);
+/**
+ * 连续 ID 分配器。taken 必须以 ws.reservedIds 为底（含解析失败文件
+ * 占用的 ID），否则会分配出已被磁盘文件占用的 ID 导致覆盖。
+ */
+function makeAllocator(kind: EntityKind, taken: Set<string>) {
+  const prefix = `${ID_PREFIX[kind]}-`;
+  let counter = 1;
+  for (const id of taken) {
+    if (!id.startsWith(prefix)) continue;
+    const num = Number(id.slice(prefix.length));
+    if (Number.isFinite(num) && num >= counter) counter = num + 1;
+  }
   return (preferred?: string): string => {
     if (preferred && !taken.has(preferred)) {
       taken.add(preferred);
@@ -20,7 +29,7 @@ function makeAllocator(ws: Workspace, kind: EntityKind, taken: Set<string>) {
     }
     let id: string;
     do {
-      id = `${ID_PREFIX[kind]}-${String(counter).padStart(3, '0')}`;
+      id = `${prefix}${String(counter).padStart(3, '0')}`;
       counter++;
     } while (taken.has(id));
     taken.add(id);
@@ -40,12 +49,11 @@ export function planImport(
   result: ImportResult
 ): { planned: PlannedEntity[]; warnings: string[] } {
   const warnings = [...result.warnings];
-  const existingIds = new Set(
-    [...ws.epics, ...ws.features, ...ws.stories].map((item) => item.entity.id)
-  );
-  const allocEpic = makeAllocator(ws, 'epic', existingIds);
-  const allocFeature = makeAllocator(ws, 'feature', existingIds);
-  const allocStory = makeAllocator(ws, 'story', existingIds);
+  // 以 reservedIds 为底：含解析失败文件占用的 ID，防止分配后覆盖
+  const existingIds = new Set(ws.reservedIds);
+  const allocEpic = makeAllocator('epic', existingIds);
+  const allocFeature = makeAllocator('feature', existingIds);
+  const allocStory = makeAllocator('story', existingIds);
   const planned: PlannedEntity[] = [];
 
   // epicRef（v1 EPIC id 或分组名）→ 最终 epic id
@@ -84,10 +92,11 @@ export function planImport(
     planned.push({ kind: 'feature', frontmatter, body: feature.body });
   }
 
+  const wsFeatureIds = new Set(ws.features.map((f) => f.entity.id));
   for (const story of result.stories) {
     const featureId =
       featureIdByRef.get(story.featureRef) ??
-      (existingIds.has(story.featureRef) ? story.featureRef : undefined);
+      (wsFeatureIds.has(story.featureRef) ? story.featureRef : undefined);
     if (!featureId) {
       warnings.push(`跳过 ${story.fm.title}: 父 Feature "${story.featureRef}" 未找到`);
       continue;
@@ -104,7 +113,21 @@ export function planImport(
     });
   }
 
-  return { planned, warnings };
+  // 落盘前逐个 schema 校验：不产出 pmspec 自己都拒绝加载的文件
+  const valid: PlannedEntity[] = [];
+  for (const item of planned) {
+    const parsed = FRONTMATTER_SCHEMAS[item.kind].safeParse(item.frontmatter);
+    if (!parsed.success) {
+      warnings.push(
+        `跳过 ${String(item.frontmatter.id)}（${String(item.frontmatter.title)}）: ` +
+          formatZodError(parsed.error)
+      );
+      continue;
+    }
+    valid.push(item);
+  }
+
+  return { planned: valid, warnings };
 }
 
 export const importCommand = new Command('import')
@@ -127,9 +150,22 @@ export const importCommand = new Command('import')
       }
       const ws = await requireWorkspace();
 
+      // 原地导入防护：导入目标在当前工作区内（或包含工作区）时，
+      // 写入会覆盖源数据，违反"导入只做新增写入"的承诺
+      const resolvedTarget = path.resolve(target);
+      const wsDir = path.resolve(ws.dir);
+      const within = (child: string, parent: string) =>
+        child === parent || child.startsWith(parent + path.sep);
+      if (within(resolvedTarget, wsDir) || within(wsDir, resolvedTarget)) {
+        fail(
+          `导入目标 ${target} 与当前工作区 ${path.relative(process.cwd(), wsDir) || wsDir} 重叠，` +
+            '原地导入会覆盖源数据。请把旧数据放到工作区之外（如 ../old-pmspace）再导入'
+        );
+      }
+
       let result: ImportResult;
       try {
-        result = await runImport(path.resolve(target), options.format);
+        result = await runImport(resolvedTarget, options.format);
       } catch (error) {
         return fail((error as Error).message);
       }
@@ -159,8 +195,12 @@ export const importCommand = new Command('import')
 
       const written: string[] = [];
       for (const item of planned) {
-        const file = await writeEntity(ws, item.kind, item.frontmatter, item.body);
-        written.push(path.relative(ws.root, file));
+        try {
+          const file = await writeEntity(ws, item.kind, item.frontmatter, item.body);
+          written.push(path.relative(ws.root, file));
+        } catch (error) {
+          warnings.push(`跳过 ${String(item.frontmatter.id)}: ${(error as Error).message}`);
+        }
       }
 
       if (options.json) {

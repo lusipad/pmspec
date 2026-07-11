@@ -20,12 +20,20 @@ interface IndexedDoc {
 }
 
 export function searchWorkspace(ws: Workspace, query: string): SearchHit[] {
-  const docs: IndexedDoc[] = allEntities(ws).map(({ kind, loaded }) => ({
-    id: loaded.entity.id,
-    kind,
-    title: loaded.entity.title,
-    body: loaded.entity.body,
-  }));
+  // 去重：损坏工作区可能出现重复 ID（validate 会报错），
+  // MiniSearch.addAll 遇到重复 ID 会直接抛异常，搜索不能因此崩溃
+  const seen = new Set<string>();
+  const docs: IndexedDoc[] = [];
+  for (const { kind, loaded } of allEntities(ws)) {
+    if (seen.has(loaded.entity.id)) continue;
+    seen.add(loaded.entity.id);
+    docs.push({
+      id: loaded.entity.id,
+      kind,
+      title: loaded.entity.title,
+      body: loaded.entity.body,
+    });
+  }
 
   const mini = new MiniSearch<IndexedDoc>({
     fields: ['id', 'title', 'body'],

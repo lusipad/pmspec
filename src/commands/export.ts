@@ -11,8 +11,10 @@ function csvEscape(value: unknown): string {
 export const exportCommand = new Command('export')
   .description('导出工作区数据（JSON 或 Feature 表 CSV）')
   .option('--format <format>', 'json | csv（默认 json）', 'json')
+  .option('--json', '等同于 --format json（与其他命令保持一致）')
   .option('--out <file>', '输出到文件（默认打印到 stdout）')
-  .action(async (options: { format: string; out?: string }) => {
+  .action(async (options: { format: string; json?: boolean; out?: string }) => {
+    if (options.json) options.format = 'json';
     const ws = await requireWorkspace();
     let output: string;
 

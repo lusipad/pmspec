@@ -38,6 +38,11 @@ program.addCommand(searchCommand);
 program.exitOverride();
 
 try {
+  // 无子命令时把帮助打到 stdout 并以 0 退出（commander 默认打 stderr）
+  if (process.argv.length <= 2) {
+    program.outputHelp();
+    process.exit(0);
+  }
   await program.parseAsync(process.argv);
 } catch (error) {
   const err = error as { code?: string; message?: string };

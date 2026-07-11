@@ -4,14 +4,19 @@ import { Workspace, storiesOfFeature } from './workspace.js';
 /**
  * 进度与负载统计（对应 spec：cli-core / 进度与负载统计）。
  *
- * 工时口径：有 Story 的 Feature 以其 Story 为计量单元（负责人缺省
- * 继承 Feature 的 assignee），无 Story 的 Feature 以自身为计量单元，
- * 避免 Feature 与 Story 估算双重计数。
+ * 工时口径：
+ * - 无 Story 的 Feature 以自身为计量单元
+ * - 有 Story 的 Feature 以其 Story 为计量单元（负责人缺省继承 Feature），
+ *   避免 Feature 与 Story 估算双重计数
+ * - Feature 估算超出其 Story 估算之和的部分计为"剩余工作量"条目
+ *   （kind: 'feature-remainder'，随 Feature 自身状态计），保证部分拆解
+ *   时总量不跳变——否则给 100h 的 Feature 拆出第一个 2h Story 会让
+ *   总估算从 100 骤降为 2
  */
 
 export interface WorkItem {
   id: string;
-  kind: 'feature' | 'story';
+  kind: 'feature' | 'story' | 'feature-remainder';
   epic?: string;
   assignee?: string;
   status: Status;
@@ -33,18 +38,33 @@ export function workItems(ws: Workspace): WorkItem[] {
         estimate: f.entity.estimate,
         actual: f.entity.actual,
       });
-    } else {
-      for (const s of stories) {
-        items.push({
-          id: s.entity.id,
-          kind: 'story',
-          epic: f.entity.epic,
-          assignee: s.entity.assignee ?? f.entity.assignee,
-          status: s.entity.status,
-          estimate: s.entity.estimate,
-          actual: s.entity.actual,
-        });
-      }
+      continue;
+    }
+    let storyEstimateSum = 0;
+    for (const s of stories) {
+      storyEstimateSum += s.entity.estimate ?? 0;
+      items.push({
+        id: s.entity.id,
+        kind: 'story',
+        epic: f.entity.epic,
+        assignee: s.entity.assignee ?? f.entity.assignee,
+        status: s.entity.status,
+        estimate: s.entity.estimate,
+        actual: s.entity.actual,
+      });
+    }
+    // actual 记在 feature 上时仍然要计入（story 上的 actual 各自计）
+    const remainder = (f.entity.estimate ?? 0) - storyEstimateSum;
+    if (remainder > 0 || (f.entity.actual ?? 0) > 0) {
+      items.push({
+        id: f.entity.id,
+        kind: 'feature-remainder',
+        epic: f.entity.epic,
+        assignee: f.entity.assignee,
+        status: f.entity.status,
+        estimate: remainder > 0 ? remainder : undefined,
+        actual: f.entity.actual,
+      });
     }
   }
   return items;
@@ -75,11 +95,16 @@ export interface OverallStats {
 export function overallStats(ws: Workspace): OverallStats {
   const items = workItems(ws);
   const breakdown = emptyBreakdown();
+  let countable = 0;
   let estimated = 0;
   let doneEstimated = 0;
   let actual = 0;
   for (const item of items) {
-    breakdown[item.status] += 1;
+    // remainder 是 feature 的未拆解切片：计工时，不虚增条目数
+    if (item.kind !== 'feature-remainder') {
+      breakdown[item.status] += 1;
+      countable += 1;
+    }
     estimated += item.estimate ?? 0;
     actual += item.actual ?? 0;
     if (item.status === 'done') doneEstimated += item.estimate ?? 0;
@@ -87,8 +112,8 @@ export function overallStats(ws: Workspace): OverallStats {
   const progressPct =
     estimated > 0
       ? Math.round((doneEstimated / estimated) * 100)
-      : items.length > 0
-        ? Math.round((breakdown.done / items.length) * 100)
+      : countable > 0
+        ? Math.round((breakdown.done / countable) * 100)
         : 0;
   return {
     entities: {
@@ -96,7 +121,7 @@ export function overallStats(ws: Workspace): OverallStats {
       features: ws.features.length,
       stories: ws.stories.length,
     },
-    items: { ...breakdown, total: items.length },
+    items: { ...breakdown, total: countable },
     hours: { estimated, doneEstimated, actual },
     progressPct,
   };
@@ -135,10 +160,11 @@ export function assigneeStats(ws: Workspace): AssigneeStats[] {
   for (const item of workItems(ws)) {
     if (!item.assignee) continue;
     const stats = ensure(item.assignee);
+    const countable = item.kind !== 'feature-remainder';
     if (item.status === 'done') {
-      stats.doneItems += 1;
+      if (countable) stats.doneItems += 1;
     } else {
-      stats.openItems += 1;
+      if (countable) stats.openItems += 1;
       stats.openHours += item.estimate ?? 0;
     }
   }

@@ -181,6 +181,105 @@ describe('add / list / show / update', () => {
   });
 });
 
+describe('数据安全（审查回归）', () => {
+  beforeEach(async () => {
+    await runCli('init', '--name', 'demo');
+  });
+
+  it('add 不会覆盖解析失败但存在的实体文件', async () => {
+    await runCli('add', 'feature', '--title', 'A'); // FEAT-001
+    // 手写坏文件占用 FEAT-002（estimate 为空 → schema 拒绝）
+    const badFile = path.join(base, 'pmspace', 'features', 'FEAT-002.md');
+    await writeFile(badFile, `---\nid: FEAT-002\ntitle: 手写\nestimate:\n---\n珍贵正文\n`, 'utf-8');
+
+    const result = await runCli('add', 'feature', '--title', 'B', '--json');
+    expect(result.code).toBe(0);
+    // 新实体拿到 FEAT-003，坏文件原样保留
+    expect(result.out).toContain('FEAT-003');
+    const { readFile } = await import('fs/promises');
+    expect(await readFile(badFile, 'utf-8')).toContain('珍贵正文');
+  });
+
+  it('update 写回原文件：文件名与 ID 不一致时不产生同 ID 双文件', async () => {
+    await runCli('add', 'feature', '--title', 'A'); // FEAT-001
+    const { rename, readdir } = await import('fs/promises');
+    const dir = path.join(base, 'pmspace', 'features');
+    await rename(path.join(dir, 'FEAT-001.md'), path.join(dir, 'login-feature.md'));
+
+    const result = await runCli('update', 'FEAT-001', '--status', 'done');
+    expect(result.code).toBe(0);
+    const files = await readdir(dir);
+    expect(files.filter((f) => f.endsWith('.md'))).toEqual(['login-feature.md']);
+
+    const list = parseJson<Array<{ id: string; status: string }>>(
+      await runCli('list', 'features', '--json')
+    );
+    expect(list).toHaveLength(1);
+    expect(list[0].status).toBe('done');
+  });
+
+  it('update 拒绝不适用于该实体类型的字段', async () => {
+    await runCli('add', 'epic', '--title', 'E');
+    const result = await runCli('update', 'EPIC-001', '--assignee', 'bob');
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('--assignee');
+  });
+
+  it('原地导入被拒绝（不覆盖源数据）', async () => {
+    const result = await runCli('import', path.join(base, 'pmspace'));
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('原地导入');
+  });
+
+  it('存在解析失败文件时命令在 stderr 提示而不是无声排除', async () => {
+    await writeFile(
+      path.join(base, 'pmspace', 'features', 'FEAT-001.md'),
+      `---\nid: FEAT-001\n---\n`,
+      'utf-8'
+    );
+    const result = await runCli('list', 'features');
+    expect(result.out).toContain('解析失败');
+  });
+});
+
+describe('CLI 一致性（审查回归）', () => {
+  beforeEach(async () => {
+    await runCli('init', '--name', 'demo');
+    await runCli('add', 'epic', '--title', '认证');
+    await runCli('add', 'feature', '--title', 'A', '--epic', 'EPIC-001', '--assignee', 'alice');
+    await runCli('add', 'feature', '--title', 'B', '--assignee', 'bob');
+  });
+
+  it('list all --json 同样应用过滤器', async () => {
+    const result = parseJson<{ features: Array<{ id: string }> }>(
+      await runCli('list', 'all', '--assignee', 'alice', '--json')
+    );
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0].id).toBe('FEAT-001');
+  });
+
+  it('list --status 非法值报错而不是静默空结果', async () => {
+    const result = await runCli('list', 'features', '--status', 'shipped');
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('shipped');
+  });
+
+  it('list epics --assignee 按 owner 匹配', async () => {
+    await runCli('update', 'EPIC-001', '--owner', 'alice');
+    const rows = parseJson<Array<{ id: string }>>(
+      await runCli('list', 'epics', '--assignee', 'alice', '--json')
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('export --json 与其他命令保持一致', async () => {
+    const result = await runCli('export', '--json');
+    expect(result.code).toBe(0);
+    const data = JSON.parse(result.out) as { features: unknown[] };
+    expect(data.features).toHaveLength(2);
+  });
+});
+
 describe('validate 退出码', () => {
   it('引用悬空时非零退出并指明实体', async () => {
     await runCli('init');

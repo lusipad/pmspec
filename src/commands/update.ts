@@ -83,6 +83,23 @@ export const updateCommand = new Command('update')
       fail('没有提供任何要更新的字段（--status、--assignee 等）');
     }
 
+    // 拒绝对该实体类型无意义的字段，避免"报告成功但什么都没改"
+    const ALLOWED: Record<string, Set<string>> = {
+      epic: new Set(['title', 'status', 'owner', 'estimate', 'actual', 'tags']),
+      feature: new Set([
+        'title', 'status', 'assignee', 'priority', 'estimate', 'actual',
+        'epic', 'skills', 'tags',
+      ]),
+      story: new Set(['title', 'status', 'assignee', 'estimate', 'actual', 'feature']),
+    };
+    const inapplicable = Object.keys(changes).filter((key) => !ALLOWED[kind].has(key));
+    if (inapplicable.length > 0) {
+      fail(
+        `${kind} 不支持字段: ${inapplicable.map((k) => `--${k}`).join(', ')}` +
+          `（可用: ${[...ALLOWED[kind]].map((k) => `--${k}`).join(', ')}）`
+      );
+    }
+
     // 合并进原始 frontmatter（保留 schema 之外的自定义键），再整体校验
     const merged = { ...loaded.raw, ...changes };
     const parsed = FRONTMATTER_SCHEMAS[kind].safeParse(merged);
@@ -91,7 +108,11 @@ export const updateCommand = new Command('update')
     }
 
     const body = hasBodyChange ? (options.description ?? '').trim() : loaded.entity.body;
-    const file = await writeEntity(ws, kind, merged, body);
+    // 写回实体实际所在文件（文件名与 ID 不一致时也不会产生同 ID 双文件）
+    const file = await writeEntity(ws, kind, merged, body, {
+      file: loaded.file,
+      overwrite: true,
+    });
 
     if (options.json) {
       printJson({ ...parsed.data, body, file: path.relative(ws.root, file) });

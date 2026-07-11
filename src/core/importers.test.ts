@@ -23,6 +23,12 @@ describe('parseCsv', () => {
     const rows = parseCsv('a,b\r\n\r\n1,2\r\n');
     expect(rows).toHaveLength(2);
   });
+  it('字段中间的裸引号按字面处理，不吞掉文件剩余内容', () => {
+    const rows = parseCsv('a,b\n5" 屏幕,x\nnext,line');
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toEqual(['5" 屏幕', 'x']);
+    expect(rows[2]).toEqual(['next', 'line']);
+  });
 });
 
 describe('字段映射', () => {
@@ -90,6 +96,11 @@ describe('importGenericCsv（通用表头别名）', () => {
   it('缺少标题列时报错', () => {
     expect(() => importGenericCsv('foo,bar\n1,2')).toThrow('标题列');
   });
+  it('epic 列为 EPIC-xxx 时视为引用而非新建分组 Epic（支持 export 回导）', () => {
+    const result = importGenericCsv('Title,Epic\nLogin,EPIC-001');
+    expect(result.epics).toHaveLength(0);
+    expect(result.features[0].epicRef).toBe('EPIC-001');
+  });
 });
 
 describe('importV1Pmspace（v1 富模型目录）', () => {
@@ -134,6 +145,7 @@ Responsive login form.
 ## User Stories
 - [x] STORY-001: As a user, I want to enter credentials (4h)
 - [ ] STORY-002: As a user, I want to see validation errors (3h)
+- [ ] STORY-003: 接入 OAuth (0h)
 
 ## Acceptance Criteria
 - [ ] Form validates email format
@@ -162,12 +174,14 @@ Responsive login form.
     expect(feature.fm.skills).toEqual(['React', 'TypeScript']);
     expect(feature.body).toContain('验收标准');
 
-    expect(result.stories).toHaveLength(2);
+    expect(result.stories).toHaveLength(3);
     expect(result.stories[0].fm.id).toBe('STORY-001');
     expect(result.stories[0].fm.status).toBe('done'); // [x]
     expect(result.stories[0].fm.estimate).toBe(4);
     expect(result.stories[0].featureRef).toBe('FEAT-001');
     expect(result.stories[1].fm.status).toBe('todo');
+    // "(0h)" 不产出非法的 estimate: 0，而是省略
+    expect(result.stories[2].fm.estimate).toBeUndefined();
   });
 
   it('detectFormat: 目录 → v1-pmspace, v1 表头 → v1-csv, 其他 → csv', async () => {

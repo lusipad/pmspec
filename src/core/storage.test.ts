@@ -50,4 +50,13 @@ estimate: 16
     expect(data).toEqual({});
     expect(body).toBe('纯正文');
   });
+
+  it('日期字面量往返保真（不被改写成 ISO 时间戳）', () => {
+    const content = `---\nid: FEAT-001\ndueDate: 2024-01-01\n---\n`;
+    const { data } = parseEntityFile(content);
+    expect(data.dueDate).toBe('2024-01-01');
+    const rewritten = serializeEntityFile(data, '');
+    expect(rewritten).toContain("dueDate: '2024-01-01'");
+    expect(rewritten).not.toContain('T00:00');
+  });
 });
