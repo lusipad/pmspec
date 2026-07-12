@@ -1,167 +1,72 @@
 import { Command } from 'commander';
-import { readdir } from 'fs/promises';
-import { join } from 'path';
 import chalk from 'chalk';
-import { readEpicFile, readFeatureFile, readMilestoneFile } from '../core/parser.js';
+import path from 'path';
+import { Epic, Feature, Story } from '../core/schema.js';
+import {
+  featuresOfEpic,
+  findById,
+  storiesOfFeature,
+} from '../core/workspace.js';
+import { fail, printJson, requireWorkspace } from '../cli/output.js';
+
+function progressLine(done: number, total: number): string {
+  if (total === 0) return '无子项';
+  const pct = Math.round((done / total) * 100);
+  return `${done}/${total} 完成 (${pct}%)`;
+}
 
 export const showCommand = new Command('show')
-  .description('Show details of an Epic, Feature, or Milestone')
-  .argument('<id>', 'ID of Epic, Feature, or Milestone (e.g., EPIC-001, FEAT-001, MILE-001)')
-  .action(async (id) => {
-    const pmspaceDir = join(process.cwd(), 'pmspace');
+  .description('查看实体详情与子项进度')
+  .argument('<id>', 'EPIC-xxx | FEAT-xxx | STORY-xxx')
+  .option('--json', '以 JSON 输出')
+  .action(async (idArg: string, options: { json?: boolean }) => {
+    const ws = await requireWorkspace();
+    const found = findById(ws, idArg);
+    if (!found) fail(`找不到实体 ${idArg.toUpperCase()}`);
+    const { kind, loaded } = found;
+    const entity = loaded.entity;
 
-    try {
-      if (id.startsWith('EPIC-')) {
-        await showEpic(pmspaceDir, id);
-      } else if (id.startsWith('FEAT-')) {
-        await showFeature(pmspaceDir, id);
-      } else if (id.startsWith('MILE-')) {
-        await showMilestone(pmspaceDir, id);
-      } else {
-        console.error(chalk.red(`Invalid ID format: ${id}`));
-        process.exit(1);
-      }
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        console.error(chalk.red(`${id} not found.`));
-        process.exit(1);
-      }
-      throw error;
+    let children: Array<Epic | Feature | Story> = [];
+    if (kind === 'epic') {
+      children = featuresOfEpic(ws, entity.id).map((f) => f.entity);
+    } else if (kind === 'feature') {
+      children = storiesOfFeature(ws, entity.id).map((s) => s.entity);
     }
+    const doneChildren = children.filter((c) => c.status === 'done').length;
+
+    if (options.json) {
+      const { body, ...frontmatter } = entity;
+      printJson({
+        kind,
+        ...frontmatter,
+        body,
+        file: path.relative(ws.root, loaded.file),
+        children: children.map(({ body: _body, ...rest }) => rest),
+        progress:
+          children.length > 0
+            ? { done: doneChildren, total: children.length }
+            : undefined,
+      });
+      return;
+    }
+
+    console.log(chalk.bold(`\n${entity.id}: ${entity.title}`));
+    console.log(chalk.dim(path.relative(process.cwd(), loaded.file)));
+    const { body, id: _id, title: _title, ...fields } = entity;
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined || (Array.isArray(value) && value.length === 0)) continue;
+      console.log(`  ${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+    }
+    if (children.length > 0) {
+      console.log(chalk.bold(`\n子项 ${progressLine(doneChildren, children.length)}`));
+      for (const child of children) {
+        const mark = child.status === 'done' ? chalk.green('✓') : chalk.gray('·');
+        console.log(`  ${mark} ${child.id} [${child.status}] ${child.title}`);
+      }
+    }
+    if (body) {
+      console.log(chalk.bold('\n描述'));
+      console.log(body);
+    }
+    console.log();
   });
-
-async function showEpic(pmspaceDir: string, id: string) {
-  const filePath = join(pmspaceDir, 'epics', `${id.toLowerCase()}.md`);
-  const epic = await readEpicFile(filePath);
-
-  console.log(chalk.bold.cyan(`\n# Epic: ${epic.title}\n`));
-  console.log(chalk.gray(`ID:       ${epic.id}`));
-  console.log(chalk.gray(`Status:   ${epic.status}`));
-  if (epic.owner) {
-    console.log(chalk.gray(`Owner:    ${epic.owner}`));
-  }
-  console.log(chalk.gray(`Estimate: ${epic.estimate} hours`));
-  console.log(chalk.gray(`Actual:   ${epic.actual} hours`));
-
-  if (epic.description) {
-    console.log(chalk.bold('\n## Description\n'));
-    console.log(epic.description);
-  }
-
-  if (epic.features.length > 0) {
-    console.log(chalk.bold('\n## Features\n'));
-    // Calculate progress
-    const featuresDir = join(pmspaceDir, 'features');
-    const files = await readdir(featuresDir);
-    const featureFiles = files.filter(f => f.endsWith('.md'));
-
-    let completed = 0;
-    for (const featureId of epic.features) {
-      try {
-        const filePath = join(featuresDir, `${featureId.toLowerCase()}.md`);
-        const feature = await readFeatureFile(filePath);
-        const checkbox = feature.status === 'done' ? '[x]' : '[ ]';
-        console.log(`  ${checkbox} ${feature.id}: ${feature.title}`);
-        if (feature.status === 'done') completed++;
-      } catch {
-        console.log(`  [ ] ${featureId}: [Not found]`);
-      }
-    }
-
-    const progress = epic.features.length > 0 ? Math.round((completed / epic.features.length) * 100) : 0;
-    console.log(chalk.gray(`\nProgress: ${completed}/${epic.features.length} (${progress}%)`));
-  }
-
-  console.log('');
-}
-
-async function showFeature(pmspaceDir: string, id: string) {
-  const filePath = join(pmspaceDir, 'features', `${id.toLowerCase()}.md`);
-  const feature = await readFeatureFile(filePath);
-
-  console.log(chalk.bold.cyan(`\n# Feature: ${feature.title}\n`));
-  console.log(chalk.gray(`ID:        ${feature.id}`));
-  console.log(chalk.gray(`Epic:      ${feature.epicId}`));
-  console.log(chalk.gray(`Status:    ${feature.status}`));
-  if (feature.assignee) {
-    console.log(chalk.gray(`Assignee:  ${feature.assignee}`));
-  }
-  console.log(chalk.gray(`Estimate:  ${feature.estimate} hours`));
-  console.log(chalk.gray(`Actual:    ${feature.actual} hours`));
-  if (feature.skillsRequired.length > 0) {
-    console.log(chalk.gray(`Skills:    ${feature.skillsRequired.join(', ')}`));
-  }
-
-  if (feature.description) {
-    console.log(chalk.bold('\n## Description\n'));
-    console.log(feature.description);
-  }
-
-  if (feature.userStories.length > 0) {
-    console.log(chalk.bold('\n## User Stories\n'));
-    for (const story of feature.userStories) {
-      const checkbox = story.status === 'done' ? '[x]' : '[ ]';
-      console.log(`  ${checkbox} ${story.id}: ${story.title} (${story.estimate}h)`);
-    }
-  }
-
-  if (feature.acceptanceCriteria.length > 0) {
-    console.log(chalk.bold('\n## Acceptance Criteria\n'));
-    for (const criterion of feature.acceptanceCriteria) {
-      console.log(`  - [ ] ${criterion}`);
-    }
-  }
-
-  if (feature.dependencies && feature.dependencies.length > 0) {
-    console.log(chalk.bold('\n## Dependencies\n'));
-    const blocks = feature.dependencies.filter(d => d.type === 'blocks');
-    const relatesTo = feature.dependencies.filter(d => d.type === 'relates-to');
-    
-    if (blocks.length > 0) {
-      console.log(chalk.gray(`  Blocks: ${blocks.map(d => d.featureId).join(', ')}`));
-    }
-    if (relatesTo.length > 0) {
-      console.log(chalk.gray(`  Relates to: ${relatesTo.map(d => d.featureId).join(', ')}`));
-    }
-  }
-
-  console.log('');
-}
-
-async function showMilestone(pmspaceDir: string, id: string) {
-  const filePath = join(pmspaceDir, 'milestones', `${id.toLowerCase()}.md`);
-  const milestone = await readMilestoneFile(filePath);
-
-  console.log(chalk.bold.cyan(`\n# Milestone: ${milestone.title}\n`));
-  console.log(chalk.gray(`ID:          ${milestone.id}`));
-  console.log(chalk.gray(`Target Date: ${milestone.targetDate}`));
-  console.log(chalk.gray(`Status:      ${milestone.status}`));
-
-  if (milestone.description) {
-    console.log(chalk.bold('\n## Description\n'));
-    console.log(milestone.description);
-  }
-
-  if (milestone.features.length > 0) {
-    console.log(chalk.bold('\n## Features\n'));
-    const featuresDir = join(pmspaceDir, 'features');
-
-    let completed = 0;
-    for (const featureId of milestone.features) {
-      try {
-        const featurePath = join(featuresDir, `${featureId.toLowerCase()}.md`);
-        const feature = await readFeatureFile(featurePath);
-        const checkbox = feature.status === 'done' ? '[x]' : '[ ]';
-        console.log(`  ${checkbox} ${feature.id}: ${feature.title}`);
-        if (feature.status === 'done') completed++;
-      } catch {
-        console.log(`  [ ] ${featureId}: [Not found]`);
-      }
-    }
-
-    const progress = milestone.features.length > 0 ? Math.round((completed / milestone.features.length) * 100) : 0;
-    console.log(chalk.gray(`\nProgress: ${completed}/${milestone.features.length} (${progress}%)`));
-  }
-
-  console.log('');
-}

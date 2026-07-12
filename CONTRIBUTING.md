@@ -1,512 +1,59 @@
 # 贡献指南
 
-感谢您对 PMSpec 项目的关注！我们欢迎各种形式的贡献，包括但不限于代码、文档、问题反馈和功能建议。
+感谢关注 PMSpec！欢迎代码、文档、问题反馈和功能建议。
 
-## 目录
+## 开发环境
 
-- [行为准则](#行为准则)
-- [开发环境设置](#开发环境设置)
-- [开发工作流](#开发工作流)
-- [代码规范](#代码规范)
-- [测试要求](#测试要求)
-- [项目模块说明](#项目模块说明)
-- [提交 Issue](#提交-issue)
-- [提交 PR](#提交-pr)
-
----
-
-## 行为准则
-
-我们致力于为所有人提供一个友好、安全和欢迎的环境。参与本项目时，请遵守以下准则：
-
-- **尊重他人** - 对所有贡献者保持尊重和友善
-- **包容多元** - 欢迎来自不同背景的贡献者
-- **建设性沟通** - 提供有建设性的反馈，避免人身攻击
-- **专注于项目** - 讨论应围绕项目本身展开
-- **接受批评** - 以开放心态接受建设性意见
-
-违反行为准则的行为可能导致被移除出项目社区。
-
----
-
-## 开发环境设置
-
-### 系统要求
-
-- **Node.js**: >= 20.0.0 (推荐使用 LTS 版本)
-- **npm**: >= 10.0.0
-- **Git**: >= 2.30
-
-### 克隆仓库和安装依赖
+- Node.js >= 20，npm >= 10
 
 ```bash
-# 克隆仓库
-git clone https://github.com/pmspec/pmspec.git
+git clone https://github.com/lusipad/pmspec.git
 cd pmspec
-
-# 安装 CLI 核心依赖
 npm install
-
-# 安装 Web 模块依赖 (如需开发 Web 功能)
-cd web/backend && npm install && cd ../..
-cd web/frontend && npm install && cd ../..
-cd web/shared && npm install && cd ../..
+npm test            # vitest：单元 + CLI 集成测试
+npm run build       # tsc
+npm run dev:cli -- list   # 本地运行 CLI
 ```
 
-### 项目结构说明
+## 项目结构
 
 ```
 pmspec/
-├── bin/                  # CLI 可执行入口
-├── src/                  # CLI 核心源代码
-│   ├── cli/              # CLI 主程序
-│   ├── commands/         # CLI 命令实现
-│   ├── core/             # 核心业务逻辑
-│   ├── utils/            # 工具函数
-│   └── index.ts          # 主入口
-├── web/                  # Web 应用
-│   ├── backend/          # 后端服务 (API)
-│   ├── frontend/         # 前端应用 (UI)
-│   └── shared/           # 共享类型定义
-├── demo/                 # 示例项目
-├── examples/             # 示例文件
-├── openspec/             # OpenSpec 规范文件
-├── package.json          # 项目配置
-├── tsconfig.json         # TypeScript 配置
-└── README.md             # 项目说明
+├── bin/pmspec.js         # CLI 可执行入口（加载 dist/cli）
+├── src/
+│   ├── core/             # 唯一数据模型与核心逻辑
+│   │   ├── schema.ts     # zod schema —— 全仓库唯一类型来源
+│   │   ├── storage.ts    # Markdown + frontmatter 读写
+│   │   ├── workspace.ts  # pmspace/ 加载、ID 分配、写入
+│   │   ├── validate.ts   # 完整性校验
+│   │   ├── stats.ts      # 进度与负载统计
+│   │   ├── importers.ts  # v1 / CSV 迁移
+│   │   └── search.ts     # 全文检索（CJK 分词）
+│   ├── commands/         # CLI 命令（每命令一文件 + 集成测试）
+│   ├── cli/              # 程序入口与输出工具
+│   └── index.ts          # 库导出
+├── .claude/commands/     # AI slash commands（breakdown/estimate/refine/assign）
+├── openspec/             # 规范与变更提案（spec 驱动开发）
+├── AGENTS.md             # AI agent 操作契约
+└── examples/             # 示例工作区
 ```
 
----
+## 开发约定
 
-## 开发工作流
-
-### Git 分支策略
-
-我们采用基于功能分支的开发模式：
-
-| 分支类型 | 命名格式 | 用途 |
-|---------|---------|------|
-| `main` | - | 稳定的主分支，随时可发布 |
-| `feature/*` | `feature/add-export-json` | 新功能开发 |
-| `fix/*` | `fix/csv-parsing-error` | Bug 修复 |
-| `docs/*` | `docs/update-readme` | 文档更新 |
-| `refactor/*` | `refactor/cli-structure` | 代码重构 |
-| `chore/*` | `chore/upgrade-deps` | 构建/依赖等杂项 |
-
-```bash
-# 创建新功能分支
-git checkout -b feature/your-feature-name
-
-# 创建 bug 修复分支
-git checkout -b fix/issue-description
-```
-
-### Commit 消息格式
-
-我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范：
-
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-**Type 类型：**
-
-| 类型 | 说明 |
-|-----|------|
-| `feat` | 新功能 |
-| `fix` | Bug 修复 |
-| `docs` | 文档更新 |
-| `style` | 代码格式 (不影响代码逻辑) |
-| `refactor` | 代码重构 (既不是新功能也不是修复) |
-| `perf` | 性能优化 |
-| `test` | 测试相关 |
-| `chore` | 构建/工具链/依赖更新 |
-
-**Scope 范围（可选）：**
-- `cli` - CLI 相关
-- `backend` - 后端相关
-- `frontend` - 前端相关
-- `shared` - 共享模块
-- `core` - 核心逻辑
-
-**示例：**
-
-```bash
-# 新功能
-git commit -m "feat(cli): add export to JSON format"
-
-# Bug 修复
-git commit -m "fix(core): resolve CSV parsing issue with empty fields"
-
-# 文档更新
-git commit -m "docs: update installation guide"
-
-# 带 body 的提交
-git commit -m "feat(backend): implement user authentication
-
-- Add JWT token generation
-- Add login/logout endpoints
-- Add middleware for protected routes
-
-Closes #123"
-```
-
-### PR 流程
-
-1. **创建分支** - 从 `main` 创建功能/修复分支
-2. **开发** - 完成代码编写和测试
-3. **自检** - 运行 lint 和测试确保通过
-4. **推送** - 推送分支到远程仓库
-5. **创建 PR** - 在 GitHub 上创建 Pull Request
-6. **代码审查** - 等待审查并响应反馈
-7. **合并** - 审查通过后合并到 `main`
-
----
-
-## 代码规范
-
-### TypeScript 配置
-
-项目使用 TypeScript 开发，主要配置如下：
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  }
-}
-```
-
-### 严格类型要求
-
-- **禁止使用 `any`** - 使用具体类型或 `unknown`
-- **启用严格模式** - 确保类型安全
-- **显式返回类型** - 公共函数需声明返回类型
-
-```typescript
-// ❌ 错误示例
-function parseData(data: any): any {
-  return data.value;
-}
-
-// ✅ 正确示例
-interface ParsedData {
-  value: string;
-}
-
-function parseData(data: unknown): ParsedData {
-  if (typeof data === 'object' && data !== null && 'value' in data) {
-    return { value: String((data as { value: unknown }).value) };
-  }
-  throw new Error('Invalid data format');
-}
-```
-
-### ESLint 规则
-
-运行代码检查：
-
-```bash
-npm run lint        # 检查代码
-npm run lint:fix    # 自动修复
-```
-
-主要规则：
-- 使用单引号 `'`
-- 句末不加分号（可配置）
-- 2 空格缩进
-- 禁止未使用的变量
-- 禁止 `console.log`（生产代码）
-
-### 命名约定
-
-| 类型 | 约定 | 示例 |
-|-----|------|------|
-| 变量/函数 | camelCase | `getUserName`, `isValid` |
-| 类/接口/类型 | PascalCase | `UserService`, `FeatureConfig` |
-| 常量 | UPPER_SNAKE_CASE | `MAX_RETRIES`, `API_URL` |
-| 文件名 | kebab-case | `user-service.ts`, `feature-list.ts` |
-| 测试文件 | `*.test.ts` | `parser.test.ts` |
-
----
+- **spec 优先**：新功能、破坏性变更、架构调整先在 `openspec/changes/` 提提案（见 `openspec/AGENTS.md`），bug 修复与文档可直接改
+- **唯一模型**：任何领域类型只能 import `src/core/schema.ts`，禁止另行定义
+- TypeScript strict，禁止 `any`
+- 每个 CLI 命令：查询类必须支持 `--json`；错误退出码为 1
+- 提交信息用 conventional commits（`feat:` / `fix:` / `docs:` / `chore:`）
+- 分支：`feature/*`、`fix/*`、`docs/*`、`chore/*`，PR 合入 `main`
 
 ## 测试要求
 
-### 运行测试
+- 核心逻辑改动必须带单元测试（`src/core/*.test.ts`）
+- CLI 行为改动更新集成测试（`src/commands/cli.test.ts`，通过临时目录跑真实命令闭环）
+- 提交前本地 `npm test` 与 `npx tsc --noEmit` 全绿
 
-```bash
-# 运行所有测试
-npm test
+## 提交 Issue / PR
 
-# 监听模式运行测试
-npm run test:watch
-
-# 生成覆盖率报告
-npm run test:coverage
-```
-
-### 测试覆盖率要求
-
-- **总体覆盖率**: >= 80%
-- **核心模块覆盖率**: >= 90%
-- **新代码覆盖率**: >= 80%
-
-提交 PR 时，请确保测试覆盖率不会下降。
-
-### 编写测试指南
-
-我们使用 [Vitest](https://vitest.dev/) 作为测试框架：
-
-```typescript
-// src/core/parser.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { parseCSV } from './parser';
-
-describe('parseCSV', () => {
-  describe('基本解析', () => {
-    it('应该正确解析标准 CSV 格式', () => {
-      const input = 'id,name\n1,test';
-      const result = parseCSV(input);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ id: '1', name: 'test' });
-    });
-
-    it('应该处理空输入', () => {
-      const result = parseCSV('');
-      expect(result).toEqual([]);
-    });
-  });
-
-  describe('边界情况', () => {
-    it('应该处理包含逗号的字段', () => {
-      const input = 'id,name\n1,"hello, world"';
-      const result = parseCSV(input);
-      
-      expect(result[0].name).toBe('hello, world');
-    });
-  });
-});
-```
-
-**测试文件组织：**
-- 测试文件与源文件同目录
-- 文件名格式: `[filename].test.ts`
-- 使用 `describe` 组织测试用例
-- 测试描述使用中文，便于理解
-
----
-
-## 项目模块说明
-
-### CLI (`src/`)
-
-命令行工具核心模块，负责：
-- 命令解析和执行
-- CSV/Markdown 文件处理
-- 功能表管理
-
-**主要目录：**
-- `cli/` - CLI 启动和配置
-- `commands/` - 各命令实现 (init, add, list, etc.)
-- `core/` - 核心业务逻辑
-- `utils/` - 通用工具函数
-
-**开发命令：**
-```bash
-npm run build      # 构建
-npm run dev        # 监听模式构建
-npm run dev:cli    # 构建并运行 CLI
-```
-
-### Backend (`web/backend/`)
-
-Web 服务端应用，提供：
-- RESTful API
-- 数据持久化
-- 用户认证
-
-**开发命令：**
-```bash
-cd web/backend
-npm run dev        # 开发模式
-npm run build      # 构建
-npm run start      # 生产模式运行
-```
-
-### Frontend (`web/frontend/`)
-
-Web 前端应用，提供：
-- 可视化界面
-- 功能表编辑器
-- 数据展示
-
-**开发命令：**
-```bash
-cd web/frontend
-npm run dev        # 开发模式
-npm run build      # 构建
-npm run preview    # 预览构建结果
-```
-
-### Shared Types (`web/shared/`)
-
-共享类型定义模块：
-- 前后端共用的 TypeScript 类型
-- API 接口定义
-- 数据模型
-
-**使用方式：**
-```typescript
-import type { Feature, FeatureList } from '@pmspec/shared';
-```
-
----
-
-## 提交 Issue
-
-### Bug 报告
-
-提交 Bug 时，请包含以下信息：
-
-```markdown
-### 问题描述
-简要描述遇到的问题
-
-### 复现步骤
-1. 执行命令 '...'
-2. 输入 '...'
-3. 查看错误
-
-### 期望行为
-描述你期望发生的行为
-
-### 实际行为
-描述实际发生的行为
-
-### 环境信息
-- 操作系统: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
-- Node.js 版本: [e.g., 20.10.0]
-- PMSpec 版本: [e.g., 1.0.0]
-
-### 错误日志
-```
-粘贴完整的错误信息
-```
-
-### 相关文件
-如有必要，附上相关配置文件或 CSV 内容（脱敏处理）
-```
-
-### 功能请求
-
-提交功能请求时，请包含以下信息：
-
-```markdown
-### 功能描述
-简要描述你希望添加的功能
-
-### 使用场景
-描述在什么情况下需要这个功能
-
-### 建议实现
-如果有想法，描述可能的实现方式
-
-### 替代方案
-是否有其他方式可以达到类似效果
-
-### 附加信息
-任何其他相关信息、截图或示例
-```
-
----
-
-## 提交 PR
-
-### PR 模板
-
-创建 PR 时，请使用以下模板：
-
-```markdown
-## 变更类型
-
-- [ ] 新功能 (feat)
-- [ ] Bug 修复 (fix)
-- [ ] 文档更新 (docs)
-- [ ] 代码重构 (refactor)
-- [ ] 性能优化 (perf)
-- [ ] 测试相关 (test)
-- [ ] 构建/依赖 (chore)
-
-## 关联 Issue
-
-Closes #(issue number)
-
-## 变更描述
-
-简要描述本次 PR 的变更内容
-
-## 变更详情
-
-- 变更点 1
-- 变更点 2
-- 变更点 3
-
-## 测试说明
-
-描述如何测试这些变更
-
-## 检查清单
-
-- [ ] 代码符合项目规范
-- [ ] 已添加/更新相关测试
-- [ ] 所有测试通过
-- [ ] 已更新相关文档
-- [ ] Commit 消息符合 Conventional Commits 规范
-
-## 截图/录屏
-
-如有 UI 变更，请附上截图或录屏
-```
-
-### 代码审查流程
-
-1. **自动检查** - CI 会自动运行 lint 和测试
-2. **人工审查** - 至少需要 1 位维护者审查通过
-3. **反馈处理** - 及时响应审查意见并更新代码
-4. **最终合并** - 所有检查通过后由维护者合并
-
-**审查重点：**
-- 代码质量和可读性
-- 测试覆盖是否充分
-- 是否符合项目规范
-- 是否有潜在的性能问题
-- 文档是否同步更新
-
-**审查礼仪：**
-- 审查者：提供具体、建设性的反馈
-- 提交者：以开放心态接受建议，及时回复
-
----
-
-## 获取帮助
-
-如果在贡献过程中遇到问题：
-
-1. 查阅项目 [README](./README.md) 和 [文档](./docs/)
-2. 搜索 [已有 Issues](https://github.com/pmspec/pmspec/issues)
-3. 在 [Discussions](https://github.com/pmspec/pmspec/discussions) 提问
-4. 创建新 Issue 描述问题
-
----
-
-再次感谢您的贡献！🎉
+- Issue 请附复现步骤与 `pmspec --version`
+- PR 保持单一主题，描述里说明动机与行为变化；涉及 spec 的引用对应 change-id

@@ -1,421 +1,196 @@
-import { describe, it, expect } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  JiraImporter,
-  LinearImporter,
-  GitHubImporter,
-  getImporter,
-  getAllImporters,
-  isValidSource,
+  detectFormat,
+  importGenericCsv,
+  importV1Csv,
+  importV1Pmspace,
+  mapPriority,
+  mapStatus,
+  parseCsv,
+  parseHours,
 } from './importers.js';
 
-describe('Importers Module', () => {
-  describe('getImporter', () => {
-    it('should return Jira importer for jira source', () => {
-      const importer = getImporter('jira');
-      expect(importer.name).toBe('Jira Importer');
-      expect(importer.source).toBe('jira');
-    });
-
-    it('should return Linear importer for linear source', () => {
-      const importer = getImporter('linear');
-      expect(importer.name).toBe('Linear Importer');
-      expect(importer.source).toBe('linear');
-    });
-
-    it('should return GitHub importer for github source', () => {
-      const importer = getImporter('github');
-      expect(importer.name).toBe('GitHub Issues Importer');
-      expect(importer.source).toBe('github');
-    });
-
-    it('should throw for unknown source', () => {
-      expect(() => getImporter('unknown' as any)).toThrow('Unknown import source');
-    });
+describe('parseCsv', () => {
+  it('处理引号包裹的逗号与转义引号', () => {
+    const rows = parseCsv('a,"b,c","say ""hi"""\n1,2,3');
+    expect(rows[0]).toEqual(['a', 'b,c', 'say "hi"']);
+    expect(rows[1]).toEqual(['1', '2', '3']);
   });
-
-  describe('getAllImporters', () => {
-    it('should return all 3 importers', () => {
-      const importers = getAllImporters();
-      expect(importers).toHaveLength(3);
-      expect(importers.map(i => i.source)).toEqual(['jira', 'linear', 'github']);
-    });
+  it('处理 CRLF 与空行', () => {
+    const rows = parseCsv('a,b\r\n\r\n1,2\r\n');
+    expect(rows).toHaveLength(2);
   });
-
-  describe('isValidSource', () => {
-    it('should return true for valid sources', () => {
-      expect(isValidSource('jira')).toBe(true);
-      expect(isValidSource('linear')).toBe(true);
-      expect(isValidSource('github')).toBe(true);
-    });
-
-    it('should return false for invalid sources', () => {
-      expect(isValidSource('unknown')).toBe(false);
-      expect(isValidSource('')).toBe(false);
-    });
+  it('字段中间的裸引号按字面处理，不吞掉文件剩余内容', () => {
+    const rows = parseCsv('a,b\n5" 屏幕,x\nnext,line');
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toEqual(['5" 屏幕', 'x']);
+    expect(rows[2]).toEqual(['next', 'line']);
   });
 });
 
-describe('JiraImporter', () => {
-  const importer = new JiraImporter();
-
-  describe('validate', () => {
-    it('should validate correct Jira export format', async () => {
-      const validExport = JSON.stringify({
-        issues: [
-          {
-            key: 'PROJ-1',
-            fields: {
-              summary: 'Test Issue',
-              issuetype: { name: 'Story' },
-              status: { name: 'To Do' },
-              labels: [],
-            },
-          },
-        ],
-      });
-
-      const result = await importer.validate(validExport);
-      expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it('should reject invalid JSON', async () => {
-      const result = await importer.validate('not json');
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-
-    it('should reject empty issues array', async () => {
-      const result = await importer.validate(JSON.stringify({ issues: [] }));
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain('No issues found in export');
-    });
-
-    it('should reject invalid format', async () => {
-      const result = await importer.validate(JSON.stringify({ notIssues: [] }));
-      expect(result.valid).toBe(false);
-    });
+describe('字段映射', () => {
+  it('mapStatus 覆盖中英文与 v1 值', () => {
+    expect(mapStatus('planning')).toBe('todo');
+    expect(mapStatus('进行中')).toBe('in-progress');
+    expect(mapStatus('completed')).toBe('done');
+    expect(mapStatus('阻塞')).toBe('blocked');
+    expect(mapStatus('未知值')).toBe('todo');
   });
-
-  describe('import', () => {
-    it('should import Jira issues as features', async () => {
-      const jiraExport = {
-        issues: [
-          {
-            key: 'PROJ-1',
-            fields: {
-              summary: 'User Authentication',
-              description: 'Implement user login',
-              issuetype: { name: 'Story' },
-              status: { name: 'To Do' },
-              priority: { name: 'High' },
-              assignee: { displayName: 'Alice' },
-              labels: ['frontend'],
-              timeoriginalestimate: 28800, // 8 hours in seconds
-              created: '2024-01-01T00:00:00Z',
-            },
-          },
-          {
-            key: 'PROJ-2',
-            fields: {
-              summary: 'Authentication Epic',
-              issuetype: { name: 'Epic' },
-              status: { name: 'In Progress' },
-              labels: [],
-            },
-          },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(jiraExport),
-        dryRun: true,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.features).toHaveLength(1);
-      expect(result.epics).toHaveLength(1);
-      
-      const feature = result.features[0];
-      expect(feature.name).toBe('User Authentication');
-      expect(feature.priority).toBe('high');
-      expect(feature.status).toBe('todo');
-      expect(feature.assignee).toBe('Alice');
-      expect(feature.estimate).toBe(8);
-      expect(feature.tags).toContain('jira:PROJ-1');
-    });
-
-    it('should map Epic to category', async () => {
-      const jiraExport = {
-        issues: [
-          {
-            key: 'EPIC-1',
-            fields: {
-              summary: 'Authentication',
-              issuetype: { name: 'Epic' },
-              status: { name: 'In Progress' },
-              labels: [],
-            },
-          },
-          {
-            key: 'STORY-1',
-            fields: {
-              summary: 'Login Form',
-              issuetype: { name: 'Story' },
-              status: { name: 'To Do' },
-              labels: [],
-              parent: {
-                key: 'EPIC-1',
-                fields: {
-                  summary: 'Authentication',
-                  issuetype: { name: 'Epic' },
-                },
-              },
-            },
-          },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(jiraExport),
-        dryRun: true,
-      });
-
-      expect(result.features[0].category).toBe('Authentication');
-    });
+  it('mapPriority 覆盖中英文', () => {
+    expect(mapPriority('高')).toBe('high');
+    expect(mapPriority('紧急')).toBe('critical');
+    expect(mapPriority(undefined)).toBe('medium');
+  });
+  it('parseHours 接受 80 / 80h / 80 hours / 80小时', () => {
+    expect(parseHours('80')).toBe(80);
+    expect(parseHours('80h')).toBe(80);
+    expect(parseHours('80 hours')).toBe(80);
+    expect(parseHours('80小时')).toBe(80);
+    expect(parseHours('N/A')).toBeUndefined();
   });
 });
 
-describe('LinearImporter', () => {
-  const importer = new LinearImporter();
+describe('importV1Csv（v1 简单模型）', () => {
+  const csv = [
+    'ID,功能名称,描述,预估工作量(h),分配给,优先级,状态,分组,标签,创建日期,截止日期',
+    'FEAT-001,登录表单,响应式登录,16,alice,高,进行中,认证,auth;ui,2024-01-01,',
+    'F2,注册表单,,8,bob,低,待办,认证,,,',
+    'FEAT-003,看板,拖拽看板,24,carol,中,完成,,,,',
+  ].join('\n');
 
-  describe('validate', () => {
-    it('should validate correct Linear export format', async () => {
-      const validExport = JSON.stringify({
-        issues: [
-          {
-            id: 'issue-1',
-            identifier: 'LIN-1',
-            title: 'Test Issue',
-            state: { name: 'Todo', type: 'unstarted' },
-            priority: 2,
-            priorityLabel: 'High',
-          },
-        ],
-      });
+  it('迁移功能行并从分组生成 Epic', () => {
+    const result = importV1Csv(csv);
+    expect(result.features).toHaveLength(3);
+    expect(result.epics).toHaveLength(1);
+    expect(result.epics[0].fm.title).toBe('认证');
 
-      const result = await importer.validate(validExport);
-      expect(result.valid).toBe(true);
-    });
-  });
+    const login = result.features[0];
+    expect(login.fm.id).toBe('FEAT-001');
+    expect(login.fm.status).toBe('in-progress');
+    expect(login.fm.priority).toBe('high');
+    expect(login.fm.estimate).toBe(16);
+    expect(login.fm.tags).toEqual(['auth', 'ui']);
+    expect(login.body).toBe('响应式登录');
+    expect(login.epicRef).toBe('认证');
 
-  describe('import', () => {
-    it('should import Linear issues as features', async () => {
-      const linearExport = {
-        issues: [
-          {
-            id: 'issue-1',
-            identifier: 'LIN-1',
-            title: 'API Integration',
-            description: 'Connect to external API',
-            state: { name: 'In Progress', type: 'started' },
-            priority: 2,
-            priorityLabel: 'High',
-            estimate: 3, // story points
-            assignee: { name: 'Bob' },
-            labels: { nodes: [{ name: 'backend' }] },
-            project: {
-              id: 'proj-1',
-              name: 'Backend Services',
-              description: 'Core backend',
-            },
-          },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(linearExport),
-        dryRun: true,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.features).toHaveLength(1);
-      expect(result.epics).toHaveLength(1);
-      
-      const feature = result.features[0];
-      expect(feature.name).toBe('API Integration');
-      expect(feature.priority).toBe('high');
-      expect(feature.status).toBe('in-progress');
-      expect(feature.estimate).toBe(12); // 3 points * 4 hours
-      expect(feature.category).toBe('Backend Services');
-      expect(feature.tags).toContain('linear:LIN-1');
-    });
-
-    it('should map Linear priority correctly', async () => {
-      const linearExport = {
-        issues: [
-          { id: '1', identifier: 'L-1', title: 'Urgent', state: { name: 'Todo', type: 'unstarted' }, priority: 1, priorityLabel: 'Urgent' },
-          { id: '2', identifier: 'L-2', title: 'High', state: { name: 'Todo', type: 'unstarted' }, priority: 2, priorityLabel: 'High' },
-          { id: '3', identifier: 'L-3', title: 'Medium', state: { name: 'Todo', type: 'unstarted' }, priority: 3, priorityLabel: 'Medium' },
-          { id: '4', identifier: 'L-4', title: 'Low', state: { name: 'Todo', type: 'unstarted' }, priority: 4, priorityLabel: 'Low' },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(linearExport),
-        dryRun: true,
-      });
-
-      expect(result.features[0].priority).toBe('critical');
-      expect(result.features[1].priority).toBe('high');
-      expect(result.features[2].priority).toBe('medium');
-      expect(result.features[3].priority).toBe('low');
-    });
+    // 非 FEAT-xxx 的旧 ID 丢弃，等待重新分配
+    expect(result.features[1].fm.id).toBeUndefined();
+    // 无分组的 feature 不挂 Epic
+    expect(result.features[2].epicRef).toBeUndefined();
   });
 });
 
-describe('GitHubImporter', () => {
-  const importer = new GitHubImporter();
+describe('importGenericCsv（通用表头别名）', () => {
+  it('识别英文表头', () => {
+    const result = importGenericCsv(
+      'Title,Estimate,Assignee,Status,Priority,Epic\nLogin,8h,alice,done,high,Auth'
+    );
+    expect(result.features[0].fm.title).toBe('Login');
+    expect(result.features[0].fm.estimate).toBe(8);
+    expect(result.features[0].fm.status).toBe('done');
+    expect(result.epics[0].fm.title).toBe('Auth');
+  });
+  it('缺少标题列时报错', () => {
+    expect(() => importGenericCsv('foo,bar\n1,2')).toThrow('标题列');
+  });
+  it('epic 列为 EPIC-xxx 时视为引用而非新建分组 Epic（支持 export 回导）', () => {
+    const result = importGenericCsv('Title,Epic\nLogin,EPIC-001');
+    expect(result.epics).toHaveLength(0);
+    expect(result.features[0].epicRef).toBe('EPIC-001');
+  });
+});
 
-  describe('validate', () => {
-    it('should validate correct GitHub export format', async () => {
-      const validExport = JSON.stringify({
-        issues: [
-          {
-            number: 1,
-            title: 'Test Issue',
-            state: 'open',
-            labels: [],
-          },
-        ],
-      });
+describe('importV1Pmspace（v1 富模型目录）', () => {
+  let dir: string;
 
-      const result = await importer.validate(validExport);
-      expect(result.valid).toBe(true);
-    });
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'pmspec-v1-'));
+    await mkdir(path.join(dir, 'epics'), { recursive: true });
+    await mkdir(path.join(dir, 'features'), { recursive: true });
+    await writeFile(
+      path.join(dir, 'epics', 'epic-001.md'),
+      `# Epic: User Authentication System
 
-    it('should accept array format (direct from GitHub CLI)', async () => {
-      const arrayExport = JSON.stringify([
-        { number: 1, title: 'Issue 1', state: 'open', labels: [] },
-        { number: 2, title: 'Issue 2', state: 'closed', labels: [] },
-      ]);
+- **ID**: EPIC-001
+- **Status**: planning
+- **Owner**: Alice
+- **Estimate**: 80 hours
+- **Actual**: 0 hours
 
-      const result = await importer.validate(arrayExport);
-      expect(result.valid).toBe(true);
-    });
+## Description
+Build a complete user authentication system.
+
+## Features
+- [ ] FEAT-001: Login form
+`,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(dir, 'features', 'feat-001.md'),
+      `# Feature: Login Form
+
+- **ID**: FEAT-001
+- **Epic**: EPIC-001
+- **Status**: in-progress
+- **Assignee**: Alice
+- **Estimate**: 16 hours
+- **Skills Required**: React, TypeScript
+
+## Description
+Responsive login form.
+
+## User Stories
+- [x] STORY-001: As a user, I want to enter credentials (4h)
+- [ ] STORY-002: As a user, I want to see validation errors (3h)
+- [ ] STORY-003: 接入 OAuth (0h)
+
+## Acceptance Criteria
+- [ ] Form validates email format
+`,
+      'utf-8'
+    );
   });
 
-  describe('import', () => {
-    it('should import GitHub issues as features', async () => {
-      const githubExport = {
-        issues: [
-          {
-            number: 42,
-            title: 'Bug fix for login',
-            body: 'Fix the login timeout issue',
-            state: 'open',
-            labels: [
-              { name: 'bug' },
-              { name: 'priority:high' },
-              { name: 'skill:typescript' },
-            ],
-            assignee: { login: 'charlie' },
-            milestone: {
-              number: 1,
-              title: 'v1.0',
-              description: 'First release',
-              due_on: '2024-03-01T00:00:00Z',
-            },
-          },
-        ],
-      };
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
 
-      const result = await importer.import({
-        content: JSON.stringify(githubExport),
-        dryRun: true,
-      });
+  it('迁移 Epic/Feature/Story 三层', async () => {
+    const result = await importV1Pmspace(dir);
 
-      expect(result.success).toBe(true);
-      expect(result.features).toHaveLength(1);
-      expect(result.milestones).toHaveLength(1);
-      
-      const feature = result.features[0];
-      expect(feature.name).toBe('Bug fix for login');
-      expect(feature.priority).toBe('high');
-      expect(feature.status).toBe('todo');
-      expect(feature.assignee).toBe('charlie');
-      expect(feature.tags).toContain('typescript'); // skill extracted
-      expect(feature.tags).toContain('bug'); // other label preserved
-      expect(feature.tags).toContain('github:#42');
-      expect(feature.tags).toContain('milestone:v1.0');
-    });
+    expect(result.epics).toHaveLength(1);
+    expect(result.epics[0].fm.id).toBe('EPIC-001');
+    expect(result.epics[0].fm.status).toBe('todo'); // planning → todo
+    expect(result.epics[0].fm.estimate).toBe(80);
+    expect(result.epics[0].body).toContain('authentication system');
 
-    it('should extract category from epic/category labels', async () => {
-      const githubExport = {
-        issues: [
-          {
-            number: 1,
-            title: 'Feature 1',
-            state: 'open',
-            labels: [{ name: 'epic:Authentication' }],
-          },
-          {
-            number: 2,
-            title: 'Feature 2',
-            state: 'open',
-            labels: [{ name: 'category:Backend' }],
-          },
-        ],
-      };
+    expect(result.features).toHaveLength(1);
+    const feature = result.features[0];
+    expect(feature.fm.id).toBe('FEAT-001');
+    expect(feature.epicRef).toBe('EPIC-001');
+    expect(feature.fm.skills).toEqual(['React', 'TypeScript']);
+    expect(feature.body).toContain('验收标准');
 
-      const result = await importer.import({
-        content: JSON.stringify(githubExport),
-        dryRun: true,
-      });
+    expect(result.stories).toHaveLength(3);
+    expect(result.stories[0].fm.id).toBe('STORY-001');
+    expect(result.stories[0].fm.status).toBe('done'); // [x]
+    expect(result.stories[0].fm.estimate).toBe(4);
+    expect(result.stories[0].featureRef).toBe('FEAT-001');
+    expect(result.stories[1].fm.status).toBe('todo');
+    // "(0h)" 不产出非法的 estimate: 0，而是省略
+    expect(result.stories[2].fm.estimate).toBeUndefined();
+  });
 
-      expect(result.features[0].category).toBe('Authentication');
-      expect(result.features[1].category).toBe('Backend');
-      expect(result.epics).toHaveLength(2);
-    });
-
-    it('should extract estimate from size labels', async () => {
-      const githubExport = {
-        issues: [
-          { number: 1, title: 'XS task', state: 'open', labels: [{ name: 'xs' }] },
-          { number: 2, title: 'S task', state: 'open', labels: [{ name: 's' }] },
-          { number: 3, title: 'M task', state: 'open', labels: [{ name: 'm' }] },
-          { number: 4, title: 'L task', state: 'open', labels: [{ name: 'l' }] },
-          { number: 5, title: 'XL task', state: 'open', labels: [{ name: 'xl' }] },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(githubExport),
-        dryRun: true,
-      });
-
-      expect(result.features[0].estimate).toBe(2);  // XS
-      expect(result.features[1].estimate).toBe(4);  // S
-      expect(result.features[2].estimate).toBe(8);  // M
-      expect(result.features[3].estimate).toBe(16); // L
-      expect(result.features[4].estimate).toBe(32); // XL
-    });
-
-    it('should map closed issues to done status', async () => {
-      const githubExport = {
-        issues: [
-          { number: 1, title: 'Open issue', state: 'open', labels: [] },
-          { number: 2, title: 'Closed issue', state: 'closed', labels: [] },
-        ],
-      };
-
-      const result = await importer.import({
-        content: JSON.stringify(githubExport),
-        dryRun: true,
-      });
-
-      expect(result.features[0].status).toBe('todo');
-      expect(result.features[1].status).toBe('done');
-    });
+  it('detectFormat: 目录 → v1-pmspace, v1 表头 → v1-csv, 其他 → csv', async () => {
+    expect(await detectFormat(dir)).toBe('v1-pmspace');
+    const v1csv = path.join(dir, 'features.csv');
+    await writeFile(v1csv, 'ID,功能名称,描述\n', 'utf-8');
+    expect(await detectFormat(v1csv)).toBe('v1-csv');
+    const generic = path.join(dir, 'generic.csv');
+    await writeFile(generic, 'Title,Status\n', 'utf-8');
+    expect(await detectFormat(generic)).toBe('csv');
   });
 });

@@ -1,174 +1,168 @@
 import { Command } from 'commander';
-import { readdir } from 'fs/promises';
-import { join } from 'path';
 import chalk from 'chalk';
-import { readEpicFile, readFeatureFile, readMilestoneFile } from '../core/parser.js';
+import Table from 'cli-table3';
+import { Status } from '../core/schema.js';
+import { Workspace } from '../core/workspace.js';
+import { fail, printJson, requireWorkspace } from '../cli/output.js';
+
+interface ListOptions {
+  status?: string;
+  assignee?: string;
+  epic?: string;
+  json?: boolean;
+}
+
+const STATUS_COLORS: Record<Status, (text: string) => string> = {
+  todo: chalk.gray,
+  'in-progress': chalk.blue,
+  done: chalk.green,
+  blocked: chalk.red,
+};
+
+function colorStatus(status: Status): string {
+  return STATUS_COLORS[status](status);
+}
+
+function filterRows<T extends { status: Status; assignee?: string; epic?: string }>(
+  rows: T[],
+  options: ListOptions
+): T[] {
+  return rows.filter((row) => {
+    if (options.status && row.status !== options.status) return false;
+    if (
+      options.assignee &&
+      row.assignee?.toLowerCase() !== options.assignee.toLowerCase()
+    )
+      return false;
+    if (options.epic && row.epic !== options.epic.toUpperCase()) return false;
+    return true;
+  });
+}
+
+function listEpics(ws: Workspace, options: ListOptions): void {
+  // Epic 没有 assignee 字段，--assignee 按 owner 匹配
+  const rows = filterRows(
+    ws.epics.map((e) => ({ ...e.entity, assignee: e.entity.owner })),
+    options
+  ).map(({ assignee: _assignee, ...rest }) => rest);
+  if (options.json) return printJson(rows.map(({ body: _body, ...rest }) => rest));
+  if (rows.length === 0) return console.log('（无 Epic）');
+  const table = new Table({ head: ['ID', '标题', '状态', 'Owner', '估算(h)'] });
+  for (const e of rows) {
+    table.push([e.id, e.title, colorStatus(e.status), e.owner ?? '-', e.estimate ?? '-']);
+  }
+  console.log(table.toString());
+}
+
+function listFeatures(ws: Workspace, options: ListOptions): void {
+  const rows = filterRows(
+    ws.features.map((f) => ({ ...f.entity })),
+    options
+  );
+  if (options.json) return printJson(rows.map(({ body: _body, ...rest }) => rest));
+  if (rows.length === 0) return console.log('（无 Feature）');
+  const table = new Table({
+    head: ['ID', '标题', 'Epic', '状态', '负责人', '优先级', '估算(h)'],
+  });
+  for (const f of rows) {
+    table.push([
+      f.id,
+      f.title,
+      f.epic ?? '-',
+      colorStatus(f.status),
+      f.assignee ?? '-',
+      f.priority,
+      f.estimate ?? '-',
+    ]);
+  }
+  console.log(table.toString());
+}
+
+function listStories(ws: Workspace, options: ListOptions): void {
+  const featureEpic = new Map(ws.features.map((f) => [f.entity.id, f.entity.epic]));
+  const rows = filterRows(
+    ws.stories.map((s) => ({ ...s.entity, epic: featureEpic.get(s.entity.feature) })),
+    options
+  );
+  if (options.json) return printJson(rows.map(({ body: _body, ...rest }) => rest));
+  if (rows.length === 0) return console.log('（无 Story）');
+  const table = new Table({ head: ['ID', '标题', 'Feature', '状态', '负责人', '估算(h)'] });
+  for (const s of rows) {
+    table.push([
+      s.id,
+      s.title,
+      s.feature,
+      colorStatus(s.status),
+      s.assignee ?? '-',
+      s.estimate ?? '-',
+    ]);
+  }
+  console.log(table.toString());
+}
 
 export const listCommand = new Command('list')
-  .description('List Epics, Features, or Milestones')
-  .argument('[type]', 'Type to list: epics, features, or milestones', 'epics')
-  .option('-s, --status <status>', 'Filter by status')
-  .option('-a, --assignee <name>', 'Filter by assignee (features only)')
-  .action(async (type, options) => {
-    const pmspaceDir = join(process.cwd(), 'pmspace');
-
-    try {
-      if (type === 'epics') {
-        await listEpics(pmspaceDir, options);
-      } else if (type === 'features') {
-        await listFeatures(pmspaceDir, options);
-      } else if (type === 'milestones') {
-        await listMilestones(pmspaceDir, options);
-      } else {
-        console.error(chalk.red(`Unknown type: ${type}. Use 'epics', 'features', or 'milestones'.`));
-        process.exit(1);
+  .description('列出 Epics / Features / Stories')
+  .argument('[kind]', 'epics | features | stories | all（默认 all）', 'all')
+  .option('--status <status>', '按状态过滤: todo | in-progress | done | blocked')
+  .option('--assignee <name>', '按负责人过滤')
+  .option('--epic <id>', '按所属 Epic 过滤')
+  .option('--json', '以 JSON 输出')
+  .action(async (kindArg: string, options: ListOptions) => {
+    if (options.status) {
+      options.status = options.status.toLowerCase();
+      const valid = ['todo', 'in-progress', 'done', 'blocked'];
+      if (!valid.includes(options.status)) {
+        fail(`非法状态 "${options.status}"，可选: ${valid.join(' | ')}`);
       }
-    } catch (error: any) {
-      console.error(chalk.red('Error:'), error.message);
-      process.exit(1);
+    }
+    const ws = await requireWorkspace();
+    const kind = kindArg.toLowerCase();
+    switch (kind) {
+      case 'epic':
+      case 'epics':
+        return listEpics(ws, options);
+      case 'feature':
+      case 'features':
+        return listFeatures(ws, options);
+      case 'story':
+      case 'stories':
+        return listStories(ws, options);
+      case 'all': {
+        if (options.json) {
+          // 与表格输出同样应用过滤器
+          const featureEpic = new Map(
+            ws.features.map((f) => [f.entity.id, f.entity.epic])
+          );
+          const strip = <T extends { body?: string; assignee?: string }>(rows: T[]) =>
+            rows.map(({ body: _body, ...rest }) => rest);
+          return printJson({
+            epics: strip(
+              filterRows(
+                ws.epics.map((e) => ({ ...e.entity, assignee: e.entity.owner })),
+                options
+              ).map(({ assignee: _assignee, ...rest }) => rest)
+            ),
+            features: strip(filterRows(ws.features.map((f) => ({ ...f.entity })), options)),
+            stories: strip(
+              filterRows(
+                ws.stories.map((s) => ({
+                  ...s.entity,
+                  epic: featureEpic.get(s.entity.feature),
+                })),
+                options
+              )
+            ),
+          });
+        }
+        console.log(chalk.bold('\nEpics'));
+        listEpics(ws, options);
+        console.log(chalk.bold('\nFeatures'));
+        listFeatures(ws, options);
+        console.log(chalk.bold('\nStories'));
+        listStories(ws, options);
+        return;
+      }
+      default:
+        fail(`未知类型 "${kindArg}"，可选: epics | features | stories | all`);
     }
   });
-
-async function listEpics(pmspaceDir: string, options: any) {
-  const epicsDir = join(pmspaceDir, 'epics');
-  const files = await readdir(epicsDir);
-  const epicFiles = files.filter(f => f.endsWith('.md'));
-
-  if (epicFiles.length === 0) {
-    console.log(chalk.yellow('No Epics found.'));
-    return;
-  }
-
-  const epics = [];
-  for (const file of epicFiles) {
-    const epic = await readEpicFile(join(epicsDir, file));
-    if (!options.status || epic.status === options.status) {
-      epics.push(epic);
-    }
-  }
-
-  // Sort by ID
-  epics.sort((a, b) => a.id.localeCompare(b.id));
-
-  console.log(chalk.bold('\nEpics:\n'));
-  console.log(
-    chalk.gray(
-      `${'ID'.padEnd(12)} ${'Title'.padEnd(30)} ${'Status'.padEnd(15)} ${'Owner'.padEnd(15)} ${'Est'.padEnd(8)} ${'Act'.padEnd(8)}`
-    )
-  );
-  console.log(chalk.gray('-'.repeat(100)));
-
-  for (const epic of epics) {
-    const statusColor =
-      epic.status === 'completed' ? chalk.green : epic.status === 'in-progress' ? chalk.yellow : chalk.white;
-
-    console.log(
-      `${epic.id.padEnd(12)} ${epic.title.substring(0, 30).padEnd(30)} ${statusColor(
-        epic.status.padEnd(15)
-      )} ${(epic.owner || '-').padEnd(15)} ${`${epic.estimate}h`.padEnd(8)} ${`${epic.actual}h`.padEnd(8)}`
-    );
-  }
-
-  console.log(chalk.gray(`\nTotal: ${epics.length} Epic(s)`));
-}
-
-async function listFeatures(pmspaceDir: string, options: any) {
-  const featuresDir = join(pmspaceDir, 'features');
-  const files = await readdir(featuresDir);
-  const featureFiles = files.filter(f => f.endsWith('.md'));
-
-  if (featureFiles.length === 0) {
-    console.log(chalk.yellow('No Features found.'));
-    return;
-  }
-
-  const features = [];
-  for (const file of featureFiles) {
-    const feature = await readFeatureFile(join(featuresDir, file));
-    let include = true;
-    if (options.status && feature.status !== options.status) include = false;
-    if (options.assignee && feature.assignee !== options.assignee) include = false;
-
-    if (include) {
-      features.push(feature);
-    }
-  }
-
-  // Sort by ID
-  features.sort((a, b) => a.id.localeCompare(b.id));
-
-  console.log(chalk.bold('\nFeatures:\n'));
-  console.log(
-    chalk.gray(
-      `${'ID'.padEnd(12)} ${'Title'.padEnd(30)} ${'Status'.padEnd(15)} ${'Assignee'.padEnd(15)} ${'Est'.padEnd(8)}`
-    )
-  );
-  console.log(chalk.gray('-'.repeat(100)));
-
-  for (const feature of features) {
-    const statusColor =
-      feature.status === 'done' ? chalk.green : feature.status === 'in-progress' ? chalk.yellow : chalk.white;
-
-    console.log(
-      `${feature.id.padEnd(12)} ${feature.title.substring(0, 30).padEnd(30)} ${statusColor(
-        feature.status.padEnd(15)
-      )} ${(feature.assignee || '-').padEnd(15)} ${`${feature.estimate}h`.padEnd(8)}`
-    );
-  }
-
-  const totalHours = features.reduce((sum, f) => sum + f.estimate, 0);
-  console.log(chalk.gray(`\nTotal: ${features.length} Feature(s), ${totalHours}h estimated`));
-}
-
-async function listMilestones(pmspaceDir: string, options: any) {
-  const milestonesDir = join(pmspaceDir, 'milestones');
-  let files: string[] = [];
-  try {
-    files = await readdir(milestonesDir);
-  } catch {
-    console.log(chalk.yellow('No Milestones found. Directory does not exist.'));
-    return;
-  }
-
-  const milestoneFiles = files.filter(f => f.endsWith('.md'));
-
-  if (milestoneFiles.length === 0) {
-    console.log(chalk.yellow('No Milestones found.'));
-    return;
-  }
-
-  const milestones = [];
-  for (const file of milestoneFiles) {
-    const milestone = await readMilestoneFile(join(milestonesDir, file));
-    if (!options.status || milestone.status === options.status) {
-      milestones.push(milestone);
-    }
-  }
-
-  // Sort by target date
-  milestones.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
-
-  console.log(chalk.bold('\nMilestones:\n'));
-  console.log(
-    chalk.gray(
-      `${'ID'.padEnd(12)} ${'Title'.padEnd(30)} ${'Target Date'.padEnd(15)} ${'Status'.padEnd(12)} ${'Features'.padEnd(10)}`
-    )
-  );
-  console.log(chalk.gray('-'.repeat(90)));
-
-  for (const milestone of milestones) {
-    const statusColor =
-      milestone.status === 'completed' ? chalk.green :
-      milestone.status === 'active' ? chalk.yellow :
-      milestone.status === 'missed' ? chalk.red :
-      chalk.white;
-
-    console.log(
-      `${milestone.id.padEnd(12)} ${milestone.title.substring(0, 30).padEnd(30)} ${milestone.targetDate.padEnd(15)} ${statusColor(
-        milestone.status.padEnd(12)
-      )} ${`${milestone.features.length}`.padEnd(10)}`
-    );
-  }
-
-  console.log(chalk.gray(`\nTotal: ${milestones.length} Milestone(s)`));
-}

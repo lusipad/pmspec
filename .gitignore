@@ -25,4 +25,4 @@ Thumbs.db
 *.swo
 
 # PMSpec workspace (for testing)
-pmspace/
+/pmspace/

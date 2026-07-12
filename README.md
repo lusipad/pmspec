@@ -1,306 +1,151 @@
 # PMSpec
 
-**AI-driven project management with Markdown-based storage**
+**长在 Git 仓库里的 AI 原生项目管理**
 
-PMSpec 是一个轻量级的项目管理工具，受 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 启发，让管理者专注于高层次的需求变更，将 Epic/Feature/UserStory 的细分、工时估算和人员分配等工作交给 AI 自动处理。
+PMSpec 把项目计划变成仓库里的 Markdown 文件：AI agent 负责分解需求、估算工时、建议分配，人负责在 `git diff` 里审查。没有服务器、没有数据库、没有网页——数据和代码住在一起，随 PR 一起评审、随 git 一起协作。
 
-## ✨ 特性
+> PMSpec 之于项目计划，如同 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 之于规范。
 
-- 📝 **Markdown 存储**: 所有数据以 Markdown 格式存储，便于版本控制和人工审查
-- 🤖 **AI 驱动**: 通过 Claude Code 集成，手动执行 slash 命令分解需求并估算工时
-- 📊 **工作负载分析**: 基于技能匹配和负载平衡的智能人员分配建议
-- 🎯 **三层层次结构**: Epic → Feature → UserStory，符合敏捷最佳实践
-- 🛠️ **CLI 工具**: 类似 Git 的命令行界面，简洁高效
+## 它是怎么工作的
 
-## 📦 安装
+```
+你："做一个用户认证系统，支持邮箱登录和第三方 OAuth"
+        │
+        ▼  AI agent（/pmspec-breakdown）直接写文件
+pmspace/
+├── epics/EPIC-001.md        # 用户认证系统
+├── features/FEAT-001.md     # 邮箱登录
+├── features/FEAT-002.md     # OAuth 接入
+└── stories/STORY-001.md     # As a user, I want ...
+        │
+        ▼  你审查
+git diff  →  满意就 commit，不满意让 agent 改
+        │
+        ▼  日常跟踪
+pmspec stats / pmspec list / pmspec validate
+```
+
+AI 集成不经过任何在线 API——agent（Claude Code 等）运行在你自己的环境里，PMSpec 只提供对 agent 友好的文件格式、`--json` 机器接口和现成的 slash command。**没有密钥要配置，离线完全可用。**
+
+## 安装
 
 ```bash
 npm install -g @lusipad/pmspec
 ```
 
-或者本地开发:
+## 五分钟上手
 
 ```bash
-git clone https://github.com/pmspec/pmspec.git
-cd pmspec
-npm install
-npm run build
-npm link
+# 1. 在项目里初始化（生成 pmspace/ 目录）
+pmspec init --name "我的项目"
+
+# 2. 建立三层结构（或者直接让 AI 干：/pmspec-breakdown）
+pmspec add epic --title "用户认证系统"
+pmspec add feature --title "邮箱登录" --epic EPIC-001 --estimate 16h --skills "react,node"
+pmspec add story --title "As a user, I want to enter credentials" --feature FEAT-001 --estimate 4
+
+# 3. 日常使用
+pmspec list features --status todo      # 查询过滤
+pmspec update FEAT-001 --status done    # 更新状态
+pmspec show EPIC-001                    # 详情 + 子项进度
+pmspec stats --by-assignee              # 谁超载了？
+pmspec validate                         # 数据完整性校验（CI 友好，错误时非零退出）
 ```
 
-## 🚀 快速开始
+详细教程见 [QUICKSTART.md](./QUICKSTART.md)。
 
-### 1. 初始化项目
+## 命令一览
+
+| 命令 | 职责 |
+|---|---|
+| `pmspec init [--minimal] [--name]` | 初始化 `pmspace/` 工作区 |
+| `pmspec add epic\|feature\|story` | 创建实体（ID 自动分配） |
+| `pmspec list [类型] [--status --assignee --epic]` | 列表与过滤 |
+| `pmspec show <ID>` | 详情与子项进度 |
+| `pmspec update <ID> [--status --assignee ...]` | 更新字段（保留自定义 frontmatter 键） |
+| `pmspec validate` | ID 唯一性 / 引用完整性 / 技能一致性校验 |
+| `pmspec stats [--by-assignee --by-epic]` | 进度与负载统计 |
+| `pmspec import <路径>` | 从 v1 数据或通用 CSV 迁移 |
+| `pmspec export [--format csv\|json]` | 导出 |
+| `pmspec search <词>` | 全文检索（支持中文） |
+
+所有查询类命令支持 `--json`，供 agent 与脚本消费。
+
+## 数据格式
+
+每个实体一个 Markdown 文件，结构化字段在 YAML frontmatter，叙述性内容在正文：
+
+```markdown
+---
+id: FEAT-001
+epic: EPIC-001
+title: 邮箱登录
+status: in-progress        # todo | in-progress | done | blocked
+assignee: alice
+priority: high             # low | medium | high | critical
+estimate: 16               # 小时
+skills: [react, node]
+---
+
+响应式登录表单，支持邮箱 + 密码。
+
+## 验收标准
+- [ ] 邮箱格式校验
+- [ ] 密码掩码显示
+```
+
+- 三层结构 Epic → Feature → Story，**Story 层可选**（小项目用 `pmspec init --minimal` 只建 features）
+- 人手直接编辑文件完全合法，`pmspec validate` 会兜底
+- 工具之外的自定义 frontmatter 键（如 `jiraKey: PROJ-42`）会被完整保留
+
+## AI 助手怎么用
+
+**Claude Code 用户**：仓库自带 4 个 slash command，开箱即用——
+
+- `/pmspec-breakdown` — 一段话需求 → 三层结构直接落盘
+- `/pmspec-estimate` — 补齐缺失的工时估算
+- `/pmspec-refine` — 细化 Feature：验收标准 + 拆 Story
+- `/pmspec-assign` — 按技能与负载推荐负责人（确认后写入）
+
+**其他 agent**：阅读 [AGENTS.md](./AGENTS.md) 中的操作契约（文件格式 + CLI 接口 + 校验闸门），效果等价。
+
+所有 AI 产出的变更都以 `pmspec validate` 通过为完成标准，并且只体现为文件修改——你用 `git diff` 审查，不满意就 revert。
+
+## 从 v1 迁移
 
 ```bash
 pmspec init
-```
-
-这会在当前目录创建 `pmspace/` 结构:
-
-```
-pmspace/
-├── project.md     # 项目概览
-├── team.md        # 团队成员和技能
-├── epics/         # Epic 文件夹
-└── features/      # Feature 文件夹
-```
-
-### 2. 配置团队
-
-编辑 `pmspace/team.md`:
-
-```markdown
-# Team
-
-## Members
-
-### Alice
-- **Skills**: React, TypeScript, Node.js
-- **Capacity**: 40 hours/week
-- **Current Load**: 0 hours/week
-
-### Bob
-- **Skills**: Python, Django, PostgreSQL
-- **Capacity**: 30 hours/week
-- **Current Load**: 0 hours/week
-```
-
-### 3. 创建 Epic
-
-在 `pmspace/epics/` 创建 `epic-001.md`:
-
-```markdown
-# Epic: User Authentication System
-
-- **ID**: EPIC-001
-- **Status**: planning
-- **Owner**: Alice
-- **Estimate**: 80 hours
-- **Actual**: 0 hours
-
-## Description
-Build a complete user authentication system with login, signup, and password reset.
-
-## Features
-- [ ] FEAT-001: Login form
-- [ ] FEAT-002: Signup form
-- [ ] FEAT-003: Password reset flow
-```
-
-### 4. 创建 Feature
-
-在 `pmspace/features/` 创建 `feat-001.md`:
-
-```markdown
-# Feature: Login Form
-
-- **ID**: FEAT-001
-- **Epic**: EPIC-001
-- **Status**: todo
-- **Assignee**: Alice
-- **Estimate**: 16 hours
-- **Actual**: 0 hours
-- **Skills Required**: React, TypeScript
-
-## Description
-Responsive login form with email and password fields.
-
-## User Stories
-- [ ] STORY-001: As a user, I want to enter credentials (4h)
-- [ ] STORY-002: As a user, I want to see validation errors (3h)
-- [ ] STORY-003: As a user, I want to reset password link (2h)
-
-## Acceptance Criteria
-- [ ] Form validates email format
-- [ ] Password is masked
-- [ ] Shows error messages for invalid input
-- [ ] Redirects to dashboard on success
-```
-
-### 5. 查看项目状态
-
-```bash
-# 列出所有 Epics
-pmspec list epics
-
-# 列出所有 Features
-pmspec list features
-
-# 按状态过滤
-pmspec list features --status in-progress
-
-# 按负责人过滤
-pmspec list features --assignee Alice
-
-# 查看详情
-pmspec show EPIC-001
-pmspec show FEAT-001
-
-# 验证项目数据
+pmspec import 旧项目/features.csv     # v1 简单模型 CSV（自动识别表头）
+pmspec import 旧项目/pmspace          # v1 富模型目录（Epic/Feature/Story 三层）
+pmspec import 任意表格.csv            # 通用 CSV（识别中英文表头别名）
 pmspec validate
 ```
 
-## 🤖 AI 助手（Web UI 手动流程）
+导入只做新增写入，不会修改或删除源数据；ID 冲突自动重新分配并提示。
 
-Web 前端提供“AI 助手”页面，用于安全地手动驱动 Claude Code：
+> **v2 是 BREAKING 变更**：v1 的 Web 界面、桌面客户端与 `simple/serve/history` 命令已移除，
+> 数据模型统一为本 README 描述的格式。背景与决策记录见
+> [openspec/changes/redesign-pmspec-v2/](./openspec/changes/redesign-pmspec-v2/)。
 
-1. **录入需求**：在左侧输入原始需求描述，确认 prompt 预览中带有 `/pmspec-breakdown`。
-2. **手动调用**：将 prompt 复制到 Claude Code（或任意支持 slash command 的 IDE）中运行。
-3. **粘贴输出**：把 Claude 返回的 Markdown 原文粘贴到页面“AI 输出”文本框。
-4. **校验解析**：点击“解析 AI 输出”，界面会在本地解析为 Epic/Feature/User Story 结构，可直接复制 JSON 结果。
+## 设计原则
 
-⚠️ 该流程不会调用任何在线 AI API，密钥管理完全掌握在使用者手中。
+1. **Git 即协作层**——不造服务器、不造多用户系统，分支/PR/diff 就是评审流程
+2. **一个模型**——全仓库唯一 zod schema，CLI 是唯一程序化入口
+3. **Agent 原生**——格式对 LLM 友好，接口对脚本友好，无复制粘贴环节
+4. **离线优先**——不依赖网络与任何 AI API 密钥
+5. **一个人能维护**——核心 + CLI 控制在最小依赖、最小表面积
 
-## 📚 CLI 命令
-
-### `pmspec init`
-
-初始化新的 PMSpec 项目。
-
-```bash
-pmspec init           # 创建 pmspace/ 目录结构
-pmspec init --force   # 强制重新初始化（覆盖现有文件）
-```
-
-### `pmspec list`
-
-列出 Epics 或 Features。
+## 开发
 
 ```bash
-pmspec list epics                        # 列出所有 Epics
-pmspec list features                     # 列出所有 Features
-pmspec list features --status todo       # 过滤状态
-pmspec list features --assignee Alice    # 过滤负责人
-```
-
-### `pmspec show`
-
-显示 Epic 或 Feature 的详细信息。
-
-```bash
-pmspec show EPIC-001   # 显示 Epic 详情和进度
-pmspec show FEAT-001   # 显示 Feature 详情
-```
-
-### `pmspec validate`
-
-验证项目数据完整性。
-
-```bash
-pmspec validate         # 验证整个项目
-pmspec validate EPIC-001  # 验证特定 Epic
-pmspec validate FEAT-001  # 验证特定 Feature
-```
-
-验证检查:
-- ✅ ID 唯一性
-- ✅ 引用完整性（Feature 引用的 Epic 存在）
-- ✅ 状态有效性
-- ✅ 工时合理性（估算 > 0，实际 >= 0）
-- ⚠️ 技能一致性（警告：所需技能不在团队中）
-
-## 🗂️ 数据模型
-
-### Epic
-
-- **ID**: EPIC-XXX
-- **Status**: `planning` | `in-progress` | `completed`
-- **Owner**: 负责人姓名
-- **Estimate**: 估算工时（小时）
-- **Actual**: 实际工时（小时）
-- **Features**: 关联的 Feature ID 列表
-
-### Feature
-
-- **ID**: FEAT-XXX
-- **Epic**: 父级 Epic ID
-- **Status**: `todo` | `in-progress` | `done`
-- **Assignee**: 分配给谁
-- **Estimate**: 估算工时（小时）
-- **Actual**: 实际工时（小时）
-- **Skills Required**: 所需技能列表
-- **User Stories**: 用户故事列表
-- **Acceptance Criteria**: 验收标准
-
-### UserStory
-
-- **ID**: STORY-XXX
-- **Title**: 故事描述
-- **Estimate**: 估算工时（小时）
-- **Status**: `todo` | `in-progress` | `done`
-- **Feature ID**: 父级 Feature ID
-
-## 🎯 设计理念
-
-PMSpec 遵循以下设计原则:
-
-1. **简单优先**: 默认 <100 行代码的实现，避免过度工程化
-2. **Markdown 至上**: 所有数据都是人类可读的 Markdown 文件
-3. **Git 友好**: 每个 Epic/Feature 独立文件，减少合并冲突
-4. **AI 辅助**: 通过 Prompt 文件集成 Claude Code，无需 API 调用
-5. **命令行优先**: 类似 Git 的 CLI 体验，适合开发者工作流
-
-## 🛠️ 开发
-
-```bash
-# 安装依赖
 npm install
-
-# 开发模式（监听文件变化）
-npm run dev
-
-# 构建
-npm run build
-
-# 运行测试
-npm test
-
-# 测试覆盖率
-npm run test:coverage
-
-# 本地测试 CLI
-npm run dev:cli -- init
+npm test              # vitest（单元 + CLI 集成测试）
+npm run build         # tsc
+npm run dev:cli -- list   # 本地跑 CLI
 ```
 
-## 📚 文档
+贡献指南见 [CONTRIBUTING.md](./CONTRIBUTING.md)，发布流程见 [PUBLISHING.md](./PUBLISHING.md)。
 
-- **[快速入门指南 (QUICKSTART.md)](./QUICKSTART.md)** - 5 分钟上手 PMSpec
-- **[AI 使用指南 (AI_GUIDE.md)](./AI_GUIDE.md)** - Claude Code AI 辅助功能详解
-- **[示例项目 (examples/)](./examples/)** - 真实项目示例和最佳实践
+## 许可
 
-## 📊 项目状态
-
-**当前版本**: 1.0.0 (MVP 已完成)
-
-已实现功能:
-- ✅ 核心数据模型 (Epic, Feature, UserStory, Team)
-- ✅ Markdown 解析器和生成器
-- ✅ CLI 框架 (init, list, show, validate, create, update)
-- ✅ 工作负载分析算法 (analyze 命令)
-- ✅ 数据验证
-- ✅ AI 任务分解集成 (Claude Code slash commands)
-- ✅ 完整文档和示例
-
-计划功能 (Post-MVP):
-- ⏳ 历史性能追踪
-- ⏳ 依赖管理
-- ⏳ 时间线可视化
-- ⏳ 外部工具集成 (Jira, Linear)
-
-## 🤝 贡献
-
-欢迎贡献！请查看 [CONTRIBUTING.md](./CONTRIBUTING.md)（待添加）。
-
-## 📝 许可
-
-MIT License - 详见 [LICENSE](./LICENSE)
-
-## 🙏 鸣谢
-
-PMSpec 受到 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 的启发。感谢 OpenSpec 团队提供了优秀的规范驱动开发模式。
-
----
-
-**Made with ❤️ for better project management**
-
+MIT License

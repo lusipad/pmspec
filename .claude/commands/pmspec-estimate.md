@@ -1,57 +1,19 @@
-# PMSpec Estimate
+# PMSpec Estimate — 工时估算
 
-为现有的 Epic/Feature/Story 重新估算工时，基于更详细的需求分析。
+为缺少估算的 Feature / Story 补齐工时，**直接回写数据**，不要输出让用户手工填写的表格。
 
-## 使用方法
+## 流程
 
-提供需要重新估算的项目 ID 或描述。
+1. 找出缺口：`pmspec list features --json` 与 `pmspec list stories --json`，筛出 `estimate` 为空的条目；`$ARGUMENTS` 指定了 ID 时只处理指定条目。
+2. 逐条估算。依据：
+   - 标题与正文描述的范围（读 `pmspace/features/FEAT-xxx.md` 全文）
+   - 同工作区内已有估算的类似条目（保持口径一致）
+   - 涉及的技能栈复杂度（`skills` 字段）
+3. 回写：`pmspec update FEAT-001 --estimate 16` （单位小时，Story 一般 2~8h，Feature 一般 8~40h）。
+4. 有 Story 的 Feature 不需要重复估算自身——统计口径以 Story 为准；若 Feature 与其 Story 的估算和差距悬殊，以 Story 之和为准修正 Feature 或说明原因。
 
-[项目ID或描述]
+## 收尾（必须执行）
 
-## 输出格式
-
-```markdown
-# 工时估算建议
-
-## Epic: EPIC-XXX - [Epic 标题]
-- 当前估算: [当前工时]h
-- 建议估算: [新工时]h
-- 调整原因: [详细的调整理由]
-
-## Feature: FEAT-XXX - [Feature 标题]
-- 当前估算: [当前工时]h
-- 建议估算: [新工时]h
-- 调整原因: [详细的调整理由]
-
-### User Stories
-- STORY-XXX: [标题] - [当前]h → [新]h ([调整理由])
-- STORY-XXX: [标题] - [当前]h → [新]h ([调整理由])
-
-## 估算依据
-1. [依据1，如：技术复杂度]
-2. [依据2，如：依赖关系]
-3. [依据3，如：团队技能匹配]
-
-## 风险因素
-- [风险1]: [影响说明]
-- [风险2]: [影响说明]
-```
-
-## 估算指导原则
-
-1. **考虑因素**:
-   - 技术复杂度和实现难度
-   - 依赖关系和阻塞因素
-   - 团队成员的技能水平
-   - 历史数据和经验
-
-2. **工时范围**:
-   - 简单 Story: 1-4h
-   - 中等 Story: 4-8h
-   - 复杂 Story: 8-16h
-   - 非常复杂 Story: 16-24h
-
-3. **缓冲建议**:
-   - 不确定性高的任务增加 20-50% 缓冲
-   - 新技术或新团队增加 30% 缓冲
-   - 有明确依赖的任务增加 15% 缓冲
+1. `pmspec validate` 通过（退出码 0）。
+2. `pmspec stats --by-assignee` 检查是否有人因新估算而超载，超载时向用户提出调整建议。
+3. 输出估算摘要：每条 ID、估算值、一句话依据，供用户经 `git diff` 复核。
